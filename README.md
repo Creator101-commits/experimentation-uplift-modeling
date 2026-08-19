@@ -1,6 +1,8 @@
-<!-- ![Banner](./image.png) -->
+![Banner](./image.png)
+
 # Experimentation Uplift Modeling
-> Short blurb about what your product does.
+
+> A reproducible study of randomized experiments, uplift models, and treatment policies.
 
 ![GitHub release (latest by date including pre-releases)](https://img.shields.io/github/v/release/Creator101-commits/experimentation-uplift-modeling?include_prereleases)
 ![GitHub last commit](https://img.shields.io/github/last-commit/Creator101-commits/experimentation-uplift-modeling)
@@ -8,10 +10,11 @@
 ![GitHub pull requests](https://img.shields.io/github/issues-pr/Creator101-commits/experimentation-uplift-modeling)
 ![GitHub](https://img.shields.io/github/license/Creator101-commits/experimentation-uplift-modeling)
 
-Brief one to two paragraph statement about your product and what it does.
+This repository contains the plan for a Criteo uplift-dataset study covering power analysis, treatment-versus-control estimation, individualized targeting, and policy evaluation. The project will compare simple policies, outcome-only models, S-learners, T-learners, and a cross-fitted doubly robust approach using leakage-safe pre-treatment features.
 
 ## Table of Contents
-- [Experimentation Uplift Modeling](#product-name)
+
+- [Experimentation Uplift Modeling](#experimentation-uplift-modeling)
 - [Quickstart / Demo](#quickstart--demo)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -36,13 +39,13 @@ Add snippets here that your readers can copy-paste with one click.
 **macOS & Linux**
 
 ```sh
-npm install experimentation-uplift-modeling --save
+npm install my-module --save
 ```
 
 **Windows**
 
 ```sh
-npm install experimentation-uplift-modeling --save
+npm install my-module --save
 ```
 
 ## Usage
@@ -51,7 +54,7 @@ npm install experimentation-uplift-modeling --save
 Explain how to use your project here. Create subsections for different features or workflows so users can find what they need quickly.
 
 ```sh
-experimentation-uplift-modeling --help
+my-module --help
 ```
 
 ## Development
@@ -84,8 +87,16 @@ Please make sure tests pass and the code is formatted before opening a PR.
 ## Release History
 [(Back to top)](#table-of-contents)
 
+* 0.2.1
+    * CHANGE: Update docs (module code remains unchanged)
+* 0.2.0
+    * CHANGE: Remove `setDefaultXYZ()`
+    * ADD: Add `init()`
+* 0.1.1
+    * FIX: Crash when calling `baz()` (Thanks @GenerousContributorName!)
 * 0.1.0
     * The first proper release
+    * CHANGE: Rename `foo()` to `bar()`
 * 0.0.1
     * Work in progress
 
@@ -97,6 +108,6 @@ Distributed under the MIT License. See [`LICENSE`](./LICENSE) for more informati
 ## Meta
 [(Back to top)](#table-of-contents)
 
-Sreeharsha Kannegundla – [@Creator101-commits](https://github.com/Creator101-commits)
+Sreeharsha Kannegundla – [@YourTwitter](https://twitter.com/YourTwitter) – YourEmail@example.com
 
 Project link: [https://github.com/Creator101-commits/experimentation-uplift-modeling](https://github.com/Creator101-commits/experimentation-uplift-modeling)
