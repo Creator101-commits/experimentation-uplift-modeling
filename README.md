@@ -27,48 +27,76 @@ This repository contains the plan for a Criteo uplift-dataset study covering pow
 ## Quickstart / Demo
 [(Back to top)](#table-of-contents)
 
-A short demo, screenshot, or GIF that lets the reader see the project in action in under a minute. Link to a hosted demo if you have one.
+Run power analysis, evaluate randomized experiments, and benchmark uplift learners:
+
+```sh
+uv sync
+uv run uplift power --baseline-rate 0.04 --mde 0.005
+uv run uplift ab-test
+uv run uplift compare
+uv run uplift report
+```
 
 ## Installation
 [(Back to top)](#table-of-contents)
 
-> **Note**: For longer README files, a "Back to top" link like the one above makes it easy to navigate.
+Requirements:
 
-Add snippets here that your readers can copy-paste with one click.
-
-**macOS & Linux**
-
-```sh
-npm install my-module --save
-```
-
-**Windows**
+- macOS or Linux
+- Python 3.12
+- [uv](https://docs.astral.sh/uv/)
 
 ```sh
-npm install my-module --save
+git clone https://github.com/Creator101-commits/experimentation-uplift-modeling.git
+cd experimentation-uplift-modeling
+uv sync
 ```
 
 ## Usage
 [(Back to top)](#table-of-contents)
 
-Explain how to use your project here. Create subsections for different features or workflows so users can find what they need quickly.
+The package CLI provides tools for causal inference and uplift modeling:
 
 ```sh
-my-module --help
+# Calculate required sample size and minimum detectable effects
+uv run uplift power --baseline-rate 0.04 --mde 0.005 --power 0.80
+
+# Analyze randomized trial outcome rates, confidence intervals, and covariate balance
+uv run uplift ab-test --samples 5000
+
+# Benchmark S-Learners, T-Learners, and Doubly Robust estimators
+uv run uplift compare --samples 5000
+
+# Generate full research report
+uv run uplift report -o artifacts/report.md
+```
+
+Python library usage:
+
+```python
+from uplift import ABTestAnalyzer, PowerCalculator, SLearner, TLearner, DoublyRobustLearner
+
+# Prospective power calculation
+power_res = PowerCalculator.calculate_sample_size(baseline_rate=0.04, mde_absolute=0.005)
+
+# Classical A/B test analysis
+ab_res = ABTestAnalyzer.analyze(treatment=W, outcome=y)
+
+# Fit S-Learner or Doubly Robust CATE estimator
+dr = DoublyRobustLearner(known_propensity=0.85)
+dr.fit(X_train, W_train, y_train)
+cate_pred = dr.predict_uplift(X_test)
 ```
 
 ## Development
 [(Back to top)](#table-of-contents)
 
-Instructions for setting up a local development environment so you can build and run the project from source.
+Run the testing and linting suite:
 
 ```sh
-git clone https://github.com/Creator101-commits/experimentation-uplift-modeling.git
-cd experimentation-uplift-modeling
-# install dependencies
-npm install
-# run in development mode
-npm run dev
+uv run pytest
+uv run ruff check .
+uv run mypy src
 ```
 
 ## Contributing

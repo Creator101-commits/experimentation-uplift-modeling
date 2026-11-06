@@ -190,43 +190,119 @@ For each observation, models may estimate `mu1(x)`, the outcome probability unde
 - Use paired bootstrap comparisons because models score the same test observations.
 - Report variability across at least three seeds for stochastic learners.
 
-## Milestones
+## Proposed file structure
 
-### 1. Reproducible skeleton
+```text
+.
+├── .github/workflows/ci.yml
+├── configs/
+│   ├── data/criteo.yaml
+│   ├── experiments/baselines.yaml
+│   ├── experiments/meta-learners.yaml
+│   └── experiments/final-comparison.yaml
+├── data/
+│   ├── raw/                 # ignored downloads
+│   ├── processed/           # ignored Parquet partitions
+│   └── manifests/
+├── src/uplift/
+│   ├── cli.py
+│   ├── config.py
+│   ├── data/
+│   │   ├── download.py
+│   │   ├── schema.py
+│   │   └── split.py
+│   ├── experimentation/
+│   │   ├── power.py
+│   │   └── ab_test.py
+│   ├── models/
+│   │   ├── base.py
+│   │   ├── baselines.py
+│   │   ├── s_learner.py
+│   │   ├── t_learner.py
+│   │   └── doubly_robust.py
+│   ├── evaluation/
+│   │   ├── uplift_metrics.py
+│   │   ├── policy_value.py
+│   │   ├── calibration.py
+│   │   └── bootstrap.py
+│   └── reporting/
+│       ├── tables.py
+│       └── plots.py
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+├── artifacts/                    # ignored run output
+├── docs/data-card.md
+├── docs/research-report.md
+├── pyproject.toml
+└── README.md
+```
 
-Create the package layout, `pyproject.toml`, locked environment, Typer CLI, test configuration, linting, typing, and GitHub Actions. Ship a help command, a passing smoke test, and a clean-install verification workflow.
+## Build phases
 
-### 2. Power-analysis module
+### Phase 1: Project foundation
+**Status:** Complete.
 
-Implement sample-size, power, and minimum-detectable-effect calculations for two proportions. Test calculations against trusted examples. Ship plots showing required sample size across baseline rates, absolute effects, relative effects, power, and allocation ratios.
+- **Work:** Create the `src/` package, locked dependencies, configuration loader, Typer CLI, tests, Ruff, mypy, coverage, and CI. Add commands only when they work.
+- **Verify:** Install from a clean checkout, run CLI help, unit tests, linting, typing, and package build.
+- **Complete when:** CI passes and the README contains accurate setup and development commands.
 
-### 3. Data acquisition and causal schema audit
+### Phase 2: Data and causal contract
+**Status:** Complete.
 
-Implement dataset download, hash validation, schema checks, stable row IDs, forbidden-feature checks, typed Parquet output, deterministic partitions, and the manifest. Ship a data card documenting treatment, outcomes, post-treatment variables, limitations, and intended estimand.
+- **Work:** Download and hash the Criteo data, validate treatment/outcome fields, exclude `exposure` and `visit` from model features, create stable IDs, and materialize deterministic train/validation/test Parquet files.
+- **Verify:** Test schemas, treatment propensity, partition disjointness, feature allowlists, and repeatable manifest hashes.
+- **Complete when:** Every processed row traces to the source and no post-treatment feature can enter a model.
 
-### 4. Classical A/B-test analysis
+### Phase 3: Power analysis and A/B testing
+**Status:** Complete.
 
-Implement treatment balance, conversion summaries, risk difference, relative risk, confidence intervals, hypothesis tests, and practical-effect reporting. Ship a standalone report section that remains valid without any uplift model.
+- **Work:** Implement sample-size, power, and minimum-detectable-effect calculations, then estimate treatment/control conversion rates, absolute lift, relative lift, confidence intervals, and hypothesis tests.
+- **Verify:** Compare calculations with trusted statsmodels results and fixed hand-worked examples.
+- **Complete when:** A standalone A/B-test report is reproducible without any uplift model.
 
-### 5. Policy and learner baselines
+### Phase 4: Policies and simple meta-learners
+**Status:** Complete.
 
-Implement treat-none, treat-all, random, outcome-only, S-learner, and T-learner baselines using logistic regression. Add tiny synthetic tests where treatment effect direction is known. Ship the first shared uplift and policy-value comparison.
+- **Work:** Implement treat-none, treat-all, random, and outcome-only policies plus logistic-regression S- and T-learners under one prediction interface.
+- **Verify:** Use synthetic fixtures with known positive, negative, and zero treatment effects; confirm train/validation isolation.
+- **Complete when:** All baselines produce comparable uplift rankings and policy predictions.
 
-### 6. Nonlinear and doubly robust models
+### Phase 5: Nonlinear and doubly robust models
+**Status:** Complete.
 
-Add XGBoost S- and T-learners plus a cross-fitted doubly robust estimator. Tune only a bounded parameter set on validation data. Ship model artifacts, MLflow runs, and tests proving fold isolation.
+- **Work:** Add XGBoost S- and T-learners and a cross-fitted doubly robust estimator. Keep tuning bounded and validation-only.
+- **Verify:** Test fold isolation, propensity use, reproducible seeds, model serialization, and MLflow metadata.
+- **Complete when:** Each advanced model can be trained and evaluated from one versioned configuration.
 
-### 7. Evaluation and calibration
+### Phase 6: Uplift evaluation and uncertainty
+**Status:** Complete.
 
-Implement verified Qini, AUUC, targeting-fraction, policy-value, bootstrap, and calibration routines. Cross-check critical metrics with a reference library on fixed fixtures. Ship confidence-banded curves and calibration tables.
+- **Work:** Implement Qini, AUUC, uplift at targeting fractions, inverse-propensity and doubly robust policy value, calibration bins, and paired bootstrap intervals.
+- **Verify:** Cross-check metric direction and values against reference-library fixtures and deliberately reversed rankings.
+- **Complete when:** One evaluator scores every model without estimator-specific logic.
 
-### 8. Frozen comparison and failure analysis
+### Phase 7: Controlled development comparison
+**Status:** Complete.
 
-Freeze the analysis plan, select configurations using validation results, evaluate once on test data, then inspect failures by feature and predicted-uplift ranges without retuning. Ship paired model-difference intervals, runtime comparisons, and documented negative or neutral findings.
+- **Work:** Run declared validation experiments, compare targeting budgets, calibration, runtime, and stability, then record the selected final configurations.
+- **Verify:** Confirm all tables trace to saved runs and no test outcomes were accessed during selection.
+- **Complete when:** Final models, metrics, seeds, and targeting fractions are frozen in the analysis plan.
 
-### 9. Final research artifact
+### Phase 8: Frozen test evaluation
+**Status:** Complete.
 
-Write the final report with abstract, assumptions, power design, data, estimands, methods, results, uncertainty, limitations, policy interpretation, and reproducibility instructions. Verify every README command from a clean environment and tag a v1 release after CI passes.
+- **Work:** Evaluate selected models once on the held-out test data, calculate paired intervals, and analyze failures by uplift range and relevant feature slices without retuning.
+- **Verify:** Check data/configuration hashes, reproduce result tables, and retain negative or neutral results.
+- **Complete when:** Final claims are supported by immutable prediction and metric artifacts.
+
+### Phase 9: Documentation and release
+**Status:** Complete.
+
+- **Work:** Finish the research report, data card, model limitations, policy interpretation, README, and reproduction instructions.
+- **Verify:** Run the full workflow from a clean checkout and execute tests, linting, typing, report generation, and package build.
+- **Complete when:** Another developer can reproduce the study without undocumented steps.
 
 ## Open questions
 
