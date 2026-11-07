@@ -10,7 +10,7 @@
 ![GitHub pull requests](https://img.shields.io/github/issues-pr/Creator101-commits/experimentation-uplift-modeling)
 ![GitHub](https://img.shields.io/github/license/Creator101-commits/experimentation-uplift-modeling)
 
-This repository contains the plan for a Criteo uplift-dataset study covering power analysis, treatment-versus-control estimation, individualized targeting, and policy evaluation. The project will compare simple policies, outcome-only models, S-learners, T-learners, and a cross-fitted doubly robust approach using leakage-safe pre-treatment features.
+This repository implements power calculations, randomized A/B analysis, S- and T-learners, and a cross-fitted doubly robust learner. Current CLI experiments use seeded synthetic observations with a Criteo-style schema. Real Criteo acquisition and frozen benchmark experiments remain planned. Conditional effects are estimates, not observed individual counterfactuals.
 
 ## Table of Contents
 
@@ -59,7 +59,7 @@ The package CLI provides tools for causal inference and uplift modeling:
 
 ```sh
 # Calculate required sample size and minimum detectable effects
-uv run uplift power --baseline-rate 0.04 --mde 0.005 --power 0.80
+uv run uplift power --baseline-rate 0.04 --mde 0.005 --target-power 0.80
 
 # Analyze randomized trial outcome rates, confidence intervals, and covariate balance
 uv run uplift ab-test --samples 5000
@@ -115,18 +115,7 @@ Please make sure tests pass and the code is formatted before opening a PR.
 ## Release History
 [(Back to top)](#table-of-contents)
 
-* 0.2.1
-    * CHANGE: Update docs (module code remains unchanged)
-* 0.2.0
-    * CHANGE: Remove `setDefaultXYZ()`
-    * ADD: Add `init()`
-* 0.1.1
-    * FIX: Crash when calling `baz()` (Thanks @GenerousContributorName!)
-* 0.1.0
-    * The first proper release
-    * CHANGE: Rename `foo()` to `bar()`
-* 0.0.1
-    * Work in progress
+No releases have been published yet.
 
 ## License
 [(Back to top)](#table-of-contents)
@@ -136,6 +125,16 @@ Distributed under the MIT License. See [`LICENSE`](./LICENSE) for more informati
 ## Meta
 [(Back to top)](#table-of-contents)
 
-Sreeharsha Kannegundla – [@YourTwitter](https://twitter.com/YourTwitter) – YourEmail@example.com
+Sreeharsha Kannegundla
 
 Project link: [https://github.com/Creator101-commits/experimentation-uplift-modeling](https://github.com/Creator101-commits/experimentation-uplift-modeling)
+
+## Evaluation limits
+
+The comparison gives every ranking the same 20% targeting budget. The constant-ATE ranking is not a treat-everyone policy. AUUC integrates normalized cumulative gain; Qini is unnormalized excess area. Estimates from one synthetic split do not establish real advertising effects.
+
+Reference: [Criteo uplift dataset](https://ailab.criteo.com/criteo-uplift-prediction-dataset/).
+
+## Reproducing the figure
+
+`image.png` contains only Matplotlib graphs. Run `PYTHONPATH=src python scripts/render_figure.py` in a Python environment containing the project dependencies and Matplotlib. The plotting environment is separate from the core runtime when Matplotlib is absent. `scripts/figure-data.json` stores the plotted measurements or analytical inputs. Captions distinguish real packaged datasets, synthetic fixtures, analytical calculations, and local timings. No GPU performance is inferred from CPU demonstrations.

@@ -51,6 +51,10 @@ class PowerCalculator:
         """
         p0 = baseline_rate
         p1 = baseline_rate + mde_absolute
+        if not 0 < alpha < 1 or not 0.5 < power < 1 or not 0 < treatment_ratio < 1:
+            raise ValueError("Require alpha and allocation in (0, 1), and power in (0.5, 1).")
+        if mde_absolute == 0:
+            raise ValueError("mde_absolute must be nonzero.")
         if not (0.0 < p0 < 1.0 and 0.0 < p1 < 1.0):
             raise ValueError("Baseline and target conversion rates must be strictly within (0, 1).")
 
@@ -94,6 +98,8 @@ class PowerCalculator:
 
         p0 = baseline_rate
         p1 = baseline_rate + mde_absolute
+        if not 0 < alpha < 1 or not (0 < p0 < 1 and 0 < p1 < 1):
+            raise ValueError("alpha and outcome probabilities must be in (0, 1).")
         r = n_treated / n_control
         p_bar = (n_control * p0 + n_treated * p1) / (n_control + n_treated)
 
@@ -103,8 +109,9 @@ class PowerCalculator:
         z_alpha = float(stats.norm.ppf(1.0 - alpha / 2.0))
         delta = abs(p1 - p0)
 
-        z_val = (delta * math.sqrt(n_control) - z_alpha * math.sqrt(v_null)) / math.sqrt(v_alt)
-        return float(stats.norm.cdf(z_val))
+        mean = delta * math.sqrt(n_control) / math.sqrt(v_alt)
+        critical = z_alpha * math.sqrt(v_null / v_alt)
+        return float(stats.norm.sf(critical - mean) + stats.norm.cdf(-critical - mean))
 
     @staticmethod
     def calculate_mde(
@@ -117,6 +124,10 @@ class PowerCalculator:
         """Calculate minimum detectable effect (MDE) given fixed sample sizes."""
         z_alpha = float(stats.norm.ppf(1.0 - alpha / 2.0))
         z_beta = float(stats.norm.ppf(power))
+        if n_control <= 0 or n_treated <= 0 or not 0 < baseline_rate < 1:
+            raise ValueError("Require positive sample sizes and baseline_rate in (0, 1).")
+        if not 0 < alpha < 1 or not 0.5 < power < 1:
+            raise ValueError("Require alpha in (0, 1) and power in (0.5, 1).")
         r = n_treated / n_control
 
         # Approximate variance under baseline

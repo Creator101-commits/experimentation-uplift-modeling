@@ -7,9 +7,9 @@ from typing import cast
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression, Ridge
-from sklearn.model_selection import KFold
+from sklearn.model_selection import StratifiedKFold
 
-from uplift.models.base import BaseUpliftLearner
+from uplift.models.base import BaseUpliftLearner, fit_binary_model, positive_probability
 
 
 class DoublyRobustLearner(BaseUpliftLearner):
@@ -36,6 +36,10 @@ class DoublyRobustLearner(BaseUpliftLearner):
         random_state: int = 42,
     ) -> None:
         super().__init__()
+        if n_splits < 2:
+            raise ValueError("n_splits must be at least two.")
+        if known_propensity is not None and not 0 < known_propensity < 1:
+            raise ValueError("known_propensity must be strictly within (0, 1).")
         self.n_splits = n_splits
         self.known_propensity = known_propensity
         self.random_state = random_state
@@ -59,9 +63,11 @@ class DoublyRobustLearner(BaseUpliftLearner):
         mu1_oof = np.zeros(n, dtype=np.float64)
         e_oof = np.zeros(n, dtype=np.float64)
 
-        kf = KFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
+        if min(np.bincount(W_arr.astype(int))) < self.n_splits:
+            raise ValueError("Each treatment arm must contain at least n_splits observations.")
+        kf = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=self.random_state)
 
-        for train_idx, val_idx in kf.split(X_arr):
+        for train_idx, val_idx in kf.split(X_arr, W_arr):
             X_tr, X_val = X_arr[train_idx], X_arr[val_idx]
             W_tr = W_arr[train_idx]
             y_tr = y_arr[train_idx]
@@ -74,11 +80,11 @@ class DoublyRobustLearner(BaseUpliftLearner):
             t_mask = W_tr == 1
 
             if np.sum(c_mask) > 0:
-                m_c.fit(X_tr[c_mask], y_tr[c_mask])
-                mu0_oof[val_idx] = m_c.predict_proba(X_val)[:, 1]
+                m_c = fit_binary_model(m_c, X_tr[c_mask], y_tr[c_mask])
+                mu0_oof[val_idx] = positive_probability(m_c, X_val)
             if np.sum(t_mask) > 0:
-                m_t.fit(X_tr[t_mask], y_tr[t_mask])
-                mu1_oof[val_idx] = m_t.predict_proba(X_val)[:, 1]
+                m_t = fit_binary_model(m_t, X_tr[t_mask], y_tr[t_mask])
+                mu1_oof[val_idx] = positive_probability(m_t, X_val)
 
             # Propensity
             if self.known_propensity is not None:
@@ -104,9 +110,13 @@ class DoublyRobustLearner(BaseUpliftLearner):
         c_all = W_arr == 0
         t_all = W_arr == 1
         if np.sum(c_all) > 0:
-            self.outcome_model_c.fit(X_arr[c_all], y_arr[c_all])
+            self.outcome_model_c = fit_binary_model(
+                self.outcome_model_c, X_arr[c_all], y_arr[c_all]
+            )
         if np.sum(t_all) > 0:
-            self.outcome_model_t.fit(X_arr[t_all], y_arr[t_all])
+            self.outcome_model_t = fit_binary_model(
+                self.outcome_model_t, X_arr[t_all], y_arr[t_all]
+            )
 
         self.is_fitted_ = True
         return self
@@ -118,7 +128,7 @@ class DoublyRobustLearner(BaseUpliftLearner):
         """Estimate baseline mu0(x) and mu1(x) = mu0(x) + tau(x)."""
         self._check_is_fitted()
         X_arr, _, _ = self._prepare_inputs(X)
-        mu0 = self.outcome_model_c.predict_proba(X_arr)[:, 1]
+        mu0 = positive_probability(self.outcome_model_c, X_arr)
         tau = self.effect_regressor.predict(X_arr)
         mu1 = np.clip(mu0 + tau, 0.0, 1.0)
         return mu0, mu1

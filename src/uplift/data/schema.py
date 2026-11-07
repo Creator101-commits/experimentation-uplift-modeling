@@ -19,6 +19,9 @@ def validate_feature_columns(columns: list[str]) -> None:
             f"Causal contract violation: post-treatment columns {forbidden} "
             f"cannot be used as model features."
         )
+    unknown = col_set.difference(FEATURE_COLUMNS)
+    if unknown:
+        raise ValueError(f"Features outside the pre-treatment allowlist: {sorted(unknown)}")
 
 
 def extract_features_and_targets(

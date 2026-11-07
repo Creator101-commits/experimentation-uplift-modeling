@@ -12,9 +12,14 @@ def compute_policy_assignment(
 ) -> np.ndarray:
     """Return binary policy decisions pi(x) in {0, 1} for a given treatment budget."""
     n = len(uplift_scores)
+    if not 0.0 <= budget_fraction <= 1.0:
+        raise ValueError("budget_fraction must be within [0, 1].")
+    if np.asarray(uplift_scores).ndim != 1 or not np.all(np.isfinite(uplift_scores)):
+        raise ValueError("uplift_scores must be a finite vector.")
     k_cutoff = int(np.ceil(budget_fraction * n))
-    ranks = np.argsort(np.argsort(-uplift_scores))
-    return (ranks < k_cutoff).astype(int)
+    actions = np.zeros(n, dtype=int)
+    actions[np.argsort(-np.asarray(uplift_scores), kind="stable")[:k_cutoff]] = 1
+    return actions
 
 
 def ipw_policy_value(
@@ -27,6 +32,8 @@ def ipw_policy_value(
 
     V(pi) = (1/N) * sum [ (W*pi/e + (1-W)*(1-pi)/(1-e)) * Y ]
     """
+    if not 0.0 < propensity < 1.0:
+        raise ValueError("propensity must be strictly within (0, 1).")
     y = np.asarray(y_true, dtype=np.float64)
     W = np.asarray(treatment, dtype=int)
     pi = np.asarray(policy_actions, dtype=int)
@@ -47,6 +54,8 @@ def doubly_robust_policy_value(
 
     Combines outcome estimates with inverse-propensity residuals.
     """
+    if not 0.0 < propensity < 1.0:
+        raise ValueError("propensity must be strictly within (0, 1).")
     y = np.asarray(y_true, dtype=np.float64)
     W = np.asarray(treatment, dtype=int)
     pi = np.asarray(policy_actions, dtype=int)

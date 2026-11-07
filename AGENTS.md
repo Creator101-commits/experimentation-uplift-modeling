@@ -5,7 +5,7 @@ A reproducible Python study of randomized experiments, uplift learners, and trea
 ## Build commands
 
 ```bash
-# Planned after Milestone 1; not runnable yet.
+# Verification commands.
 uv sync
 uv run pytest
 uv run ruff check .

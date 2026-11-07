@@ -9,7 +9,7 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 
-from uplift.models.base import BaseUpliftLearner
+from uplift.models.base import BaseUpliftLearner, fit_binary_model, positive_probability
 
 
 class SLearner(BaseUpliftLearner):
@@ -51,7 +51,7 @@ class SLearner(BaseUpliftLearner):
 
         # Augment features with treatment indicator column
         X_augmented = np.column_stack([X_arr, W_arr])
-        self.model.fit(X_augmented, y_arr)
+        self.model = fit_binary_model(self.model, X_augmented, y_arr)
         self.is_fitted_ = True
         return self
 
@@ -67,7 +67,7 @@ class SLearner(BaseUpliftLearner):
         X_control = np.column_stack([X_arr, np.zeros(n, dtype=np.float64)])
         X_treated = np.column_stack([X_arr, np.ones(n, dtype=np.float64)])
 
-        mu0 = self.model.predict_proba(X_control)[:, 1]
-        mu1 = self.model.predict_proba(X_treated)[:, 1]
+        mu0 = positive_probability(self.model, X_control)
+        mu1 = positive_probability(self.model, X_treated)
 
         return mu0, mu1

@@ -60,7 +60,7 @@ def ab_test(
     """Run randomized A/B experiment evaluation and covariate balance audit."""
     df = generate_synthetic_uplift_data(n_samples=samples, random_state=42)
     res = ABTestAnalyzer.analyze(df["treatment"], df["conversion"], alpha=alpha)
-    typer.echo("\nRandomized A/B Test Results:")
+    typer.echo("\nSynthetic Randomized A/B Test Results:")
     typer.echo(format_ab_test_table(res))
 
     X, W, _ = extract_features_and_targets(df)
@@ -82,19 +82,20 @@ def compare(
 
     models = {
         "Random": RandomPolicy(),
-        "TreatAll": TreatAllPolicy(),
+        "Constant ATE ranking": TreatAllPolicy(),
         "OutcomeOnly": OutcomeOnlyLearner(),
         "S-Learner (Logistic)": SLearner(estimator_type="logistic"),
         "T-Learner (Logistic)": TLearner(estimator_type="logistic"),
         "Doubly Robust (AIPW)": DoublyRobustLearner(known_propensity=0.85),
     }
 
+    nuisance = TLearner().fit(X_tr, W_tr, y_tr)
+    mu0_pred, mu1_pred = nuisance.predict_outcomes(X_te)
     results: dict[str, dict[str, float]] = {}
 
     for name, model in models.items():
         model.fit(X_tr, W_tr, y_tr)
         tau_pred = model.predict_uplift(X_te)
-        mu0_pred, mu1_pred = model.predict_outcomes(X_te)
 
         actions_20 = compute_policy_assignment(tau_pred, budget_fraction=0.20)
         dr_val = doubly_robust_policy_value(
@@ -109,7 +110,7 @@ def compare(
             "policy_value_20%": dr_val,
         }
 
-    typer.echo("\nUplift Modeling Benchmark Results:")
+    typer.echo("\nSynthetic Uplift Modeling Benchmark Results:")
     typer.echo(format_model_comparison_table(results))
 
 
@@ -135,18 +136,19 @@ def report(
 
     models = {
         "Random": RandomPolicy(),
-        "TreatAll": TreatAllPolicy(),
+        "Constant ATE ranking": TreatAllPolicy(),
         "OutcomeOnly": OutcomeOnlyLearner(),
         "S-Learner": SLearner(estimator_type="logistic"),
         "T-Learner": TLearner(estimator_type="logistic"),
         "Doubly Robust": DoublyRobustLearner(known_propensity=0.85),
     }
 
+    nuisance = TLearner().fit(X_tr, W_tr, y_tr)
+    mu0_pred, mu1_pred = nuisance.predict_outcomes(X_te)
     comp_results: dict[str, dict[str, float]] = {}
     for name, model in models.items():
         model.fit(X_tr, W_tr, y_tr)
         tau_pred = model.predict_uplift(X_te)
-        mu0_pred, mu1_pred = model.predict_outcomes(X_te)
         actions_20 = compute_policy_assignment(tau_pred, budget_fraction=0.20)
         dr_val = doubly_robust_policy_value(
             y_te, W_te, actions_20, mu0_pred, mu1_pred, propensity=0.85
@@ -160,6 +162,10 @@ def report(
         }
 
     report_text = f"""# Experimentation & Uplift Modeling Research Report
+
+Data source: seeded synthetic observations, not the Criteo dataset.
+All policies in the table target the top 20%; constant ATE is a ranking baseline.
+No train/validation tuning or Criteo result is claimed.
 
 ## Prospective Power Analysis
 

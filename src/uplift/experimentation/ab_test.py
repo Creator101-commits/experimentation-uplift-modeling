@@ -41,8 +41,14 @@ class ABTestAnalyzer:
         alpha: float = 0.05,
     ) -> ABTestResult:
         """Run two-proportion hypothesis test and confidence interval estimation."""
-        W = np.asarray(treatment, dtype=int)
-        y = np.asarray(outcome, dtype=int)
+        W = np.asarray(treatment)
+        y = np.asarray(outcome)
+        if W.ndim != 1 or y.shape != W.shape:
+            raise ValueError("Treatment and outcome must be aligned vectors.")
+        if not np.all(np.isin(W, [0, 1])) or not np.all(np.isin(y, [0, 1])):
+            raise ValueError("Treatment and outcome must be binary.")
+        if not 0 < alpha < 1:
+            raise ValueError("alpha must be in (0, 1).")
 
         n0 = int(np.sum(W == 0))
         n1 = int(np.sum(W == 1))
@@ -116,7 +122,9 @@ class ABTestAnalyzer:
             m0, m1 = float(np.mean(c_vals)), float(np.mean(t_vals))
             v0, v1 = float(np.var(c_vals, ddof=1)), float(np.var(t_vals, ddof=1))
             pooled_std = math.sqrt((v0 + v1) / 2.0)
-            smd = abs(m1 - m0) / pooled_std if pooled_std > 0 else 0.0
+            smd = (
+                abs(m1 - m0) / pooled_std if pooled_std > 0 else (float("inf") if m1 != m0 else 0.0)
+            )
             smds[col] = smd
 
         return smds

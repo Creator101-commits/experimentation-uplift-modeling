@@ -9,7 +9,7 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 
-from uplift.models.base import BaseUpliftLearner
+from uplift.models.base import BaseUpliftLearner, fit_binary_model, positive_probability
 
 
 class TLearner(BaseUpliftLearner):
@@ -57,8 +57,8 @@ class TLearner(BaseUpliftLearner):
         if np.sum(mask_c) == 0 or np.sum(mask_t) == 0:
             raise ValueError("Both treatment arms must have samples for T-Learner.")
 
-        self.model_control.fit(X_arr[mask_c], y_arr[mask_c])
-        self.model_treated.fit(X_arr[mask_t], y_arr[mask_t])
+        self.model_control = fit_binary_model(self.model_control, X_arr[mask_c], y_arr[mask_c])
+        self.model_treated = fit_binary_model(self.model_treated, X_arr[mask_t], y_arr[mask_t])
         self.is_fitted_ = True
         return self
 
@@ -70,7 +70,7 @@ class TLearner(BaseUpliftLearner):
         self._check_is_fitted()
         X_arr, _, _ = self._prepare_inputs(X)
 
-        mu0 = self.model_control.predict_proba(X_arr)[:, 1]
-        mu1 = self.model_treated.predict_proba(X_arr)[:, 1]
+        mu0 = positive_probability(self.model_control, X_arr)
+        mu1 = positive_probability(self.model_treated, X_arr)
 
         return mu0, mu1

@@ -28,19 +28,25 @@ def compute_uplift_curve(
     scores = np.asarray(uplift_scores, dtype=np.float64)
 
     # Sort descending by predicted uplift
-    order = np.argsort(-scores)
+    if n_bins <= 0:
+        raise ValueError("n_bins must be positive.")
+    if y.ndim != 1 or W.shape != y.shape or scores.shape != y.shape or not len(y):
+        raise ValueError("Outcomes, treatment, and scores must be aligned nonempty vectors.")
+    if not np.all(np.isfinite(scores)) or not np.all(np.isin(W, [0, 1])):
+        raise ValueError("Scores must be finite and treatment must be binary.")
+    order = np.argsort(-scores, kind="stable")
     y_sorted = y[order]
     W_sorted = W[order]
 
     n = len(y)
-    cum_t = np.cumsum(W_sorted)
-    cum_c = np.cumsum(1 - W_sorted)
+    cum_t = np.r_[0, np.cumsum(W_sorted)]
+    cum_c = np.r_[0, np.cumsum(1 - W_sorted)]
 
-    cum_y_t = np.cumsum(y_sorted * W_sorted)
-    cum_y_c = np.cumsum(y_sorted * (1 - W_sorted))
+    cum_y_t = np.r_[0, np.cumsum(y_sorted * W_sorted)]
+    cum_y_c = np.r_[0, np.cumsum(y_sorted * (1 - W_sorted))]
 
     # Downsample to n_bins points
-    indices = np.linspace(0, n - 1, n_bins + 1, dtype=int)
+    indices = np.unique(np.linspace(0, n, min(n_bins, n) + 1, dtype=int))
 
     fracs = indices / n
     # Scaled Qini: cum_y_t - cum_y_c * (cum_t / cum_c)
@@ -74,7 +80,7 @@ def qini_score(
     treatment: np.ndarray | pd.Series,
     uplift_scores: np.ndarray | pd.Series,
 ) -> float:
-    """Compute Qini coefficient: normalized area between model Qini curve and random baseline."""
+    """Compute unnormalized excess Qini area above the random targeting baseline."""
     fracs, _, qini = compute_uplift_curve(y_true, treatment, uplift_scores)
     # Area under model Qini
     area_model = np.trapezoid(qini, fracs)

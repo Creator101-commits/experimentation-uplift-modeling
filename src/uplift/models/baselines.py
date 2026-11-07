@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
 
-from uplift.models.base import BaseUpliftLearner
+from uplift.models.base import BaseUpliftLearner, fit_binary_model, positive_probability
 
 
 class TreatNonePolicy(BaseUpliftLearner):
@@ -106,7 +106,7 @@ class OutcomeOnlyLearner(BaseUpliftLearner):
     ) -> OutcomeOnlyLearner:
         X_arr, _, y_arr = self._prepare_inputs(X, treatment, y)
         assert y_arr is not None
-        self.model.fit(X_arr, y_arr)
+        self.model = fit_binary_model(self.model, X_arr, y_arr)
         self.is_fitted_ = True
         return self
 
@@ -116,5 +116,5 @@ class OutcomeOnlyLearner(BaseUpliftLearner):
     ) -> tuple[np.ndarray, np.ndarray]:
         self._check_is_fitted()
         X_arr, _, _ = self._prepare_inputs(X)
-        prob = self.model.predict_proba(X_arr)[:, 1]
+        prob = positive_probability(self.model, X_arr)
         return np.zeros(len(X_arr)), prob
