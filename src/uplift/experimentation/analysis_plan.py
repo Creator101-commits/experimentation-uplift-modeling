@@ -55,6 +55,14 @@ def build_analysis_plan(
             "policy_value": "IPW and DR policy value using the known propensity",
             "calibration": "equal-count bins of predicted uplift vs observed "
             "treated-minus-control rate",
+            "tie_handling": "curves evaluated at distinct-score block "
+            "boundaries with linear connection; cutoff metrics interpolate "
+            "cumulative weighted sums inside straddling tie blocks",
+            "constant_policies": "treat-none/treat-all are constant policies "
+            "(control/treated mean via known propensity), excluded from "
+            "ranking metrics and calibration",
+            "policy_gain": "policy value at each budget minus the "
+            "treat-all constant value and minus the random policy value",
         },
         "bootstrap": {
             "resamples": BOOTSTRAP_RESAMPLES,

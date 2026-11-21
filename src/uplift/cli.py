@@ -114,6 +114,53 @@ def compare(
     typer.echo(format_model_comparison_table(results))
 
 
+@app.command("prepare-data")
+def prepare_data(
+    out: Path = typer.Option(..., "--out", help="Output directory for partitions."),  # noqa: B008
+    data_dir: Path = typer.Option(  # noqa: B008
+        Path("data/criteo"), "--data-dir", help="Where to cache the source CSV."
+    ),
+) -> None:
+    """Download, validate, and partition the Criteo uplift dataset."""
+    from uplift.data.criteo import download_criteo, prepare_criteo
+
+    csv_path = download_criteo(data_dir)
+    manifest = prepare_criteo(csv_path, out)
+    typer.echo(
+        f"Prepared {manifest['n_rows']} rows -> {out} "
+        f"(treatment={manifest['observed_treatment_rate']:.4f}, "
+        f"conversion={manifest['observed_conversion_rate']:.5f}, "
+        f"duplicates={manifest['duplicate_rows']})"
+    )
+
+
+@app.command()
+def benchmark(
+    data: Path = typer.Option(..., "--data", help="Prepared data directory."),  # noqa: B008
+    out: Path = typer.Option(..., "--out", help="Output directory for artifacts."),  # noqa: B008
+    max_train: int | None = typer.Option(None, "--max-train"),  # noqa: B008
+    max_val: int | None = typer.Option(None, "--max-val"),  # noqa: B008
+    max_test: int | None = typer.Option(None, "--max-test"),  # noqa: B008
+    no_bootstrap: bool = typer.Option(False, "--no-bootstrap"),  # noqa: B008
+) -> None:
+    """Run the frozen uplift benchmark on prepared partitions."""
+    from uplift.experimentation.benchmark import run_benchmark
+
+    manifest = run_benchmark(
+        data,
+        out,
+        max_train=max_train,
+        max_val=max_val,
+        max_test=max_test,
+        do_bootstrap=not no_bootstrap,
+    )
+    typer.echo(
+        f"Benchmark complete -> {out} "
+        f"(ordering_ok={manifest['ordering_ok']}, "
+        f"total={manifest['total_seconds']:.1f}s)"
+    )
+
+
 @app.command()
 def report(
     output_file: Path | None = typer.Option(  # noqa: B008
