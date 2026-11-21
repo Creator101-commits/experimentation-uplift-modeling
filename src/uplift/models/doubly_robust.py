@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import pandas as pd
@@ -27,6 +27,14 @@ class DoublyRobustLearner(BaseUpliftLearner):
         is estimated with logistic regression.
     random_state : int, default=42
         Random seed for cross-fitting and estimators.
+    outcome_estimator : {"logistic", "xgboost"}, default="logistic"
+        Outcome model family for the cross-fitted mu0/mu1 nuisances. The
+        effect regressor remains Ridge in both variants.
+    xgb_params : dict or None, default=None
+        Optional XGBoost hyperparameter overrides for the xgboost variant.
+    xgb_early_stopping : bool, default=False
+        When True and outcome_estimator="xgboost", early-stop nuisance
+        models on a held-out 10% slice of each fit call.
     """
 
     def __init__(
@@ -34,6 +42,9 @@ class DoublyRobustLearner(BaseUpliftLearner):
         n_splits: int = 3,
         known_propensity: float | None = None,
         random_state: int = 42,
+        outcome_estimator: Literal["logistic", "xgboost"] = "logistic",
+        xgb_params: dict[str, Any] | None = None,
+        xgb_early_stopping: bool = False,
     ) -> None:
         super().__init__()
         if n_splits < 2:
@@ -43,10 +54,22 @@ class DoublyRobustLearner(BaseUpliftLearner):
         self.n_splits = n_splits
         self.known_propensity = known_propensity
         self.random_state = random_state
+        self.outcome_estimator = outcome_estimator
+        self.xgb_params = xgb_params
+        self.xgb_early_stopping = xgb_early_stopping
 
-        self.outcome_model_c = LogisticRegression(max_iter=1000, random_state=random_state)
-        self.outcome_model_t = LogisticRegression(max_iter=1000, random_state=random_state + 1)
+        self.outcome_model_c = self._new_outcome_model(random_state)
+        self.outcome_model_t = self._new_outcome_model(random_state + 1)
         self.effect_regressor = Ridge(alpha=1.0, random_state=random_state)
+
+    def _new_outcome_model(self, random_state: int) -> Any:
+        """Return a fresh outcome classifier for the configured family."""
+        if self.outcome_estimator == "xgboost":
+            from uplift.models.xgboost import make_early_stop_xgb, make_xgb_classifier
+
+            factory = make_early_stop_xgb if self.xgb_early_stopping else make_xgb_classifier
+            return factory(random_state, **(self.xgb_params or {}))
+        return LogisticRegression(max_iter=1000, random_state=random_state)
 
     def fit(
         self,
@@ -73,8 +96,8 @@ class DoublyRobustLearner(BaseUpliftLearner):
             y_tr = y_arr[train_idx]
 
             # Fit outcome models
-            m_c = LogisticRegression(max_iter=1000, random_state=self.random_state)
-            m_t = LogisticRegression(max_iter=1000, random_state=self.random_state + 1)
+            m_c = self._new_outcome_model(self.random_state)
+            m_t = self._new_outcome_model(self.random_state + 1)
 
             c_mask = W_tr == 0
             t_mask = W_tr == 1

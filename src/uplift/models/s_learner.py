@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -17,25 +17,39 @@ class SLearner(BaseUpliftLearner):
 
     Parameters
     ----------
-    estimator_type : {"logistic", "gradient_boosting"}, default="logistic"
+    estimator_type : {"logistic", "gradient_boosting", "xgboost"}, default="logistic"
         Type of underlying classification model to fit.
     random_state : int, default=42
         Random seed for model training.
+    xgb_params : dict or None, default=None
+        Optional XGBoost hyperparameter overrides when estimator_type="xgboost".
+    xgb_early_stopping : bool, default=False
+        When True and estimator_type="xgboost", early-stop on a held-out
+        10% slice of each fit call (outcome log loss, 100 rounds).
     """
 
     def __init__(
         self,
-        estimator_type: Literal["logistic", "gradient_boosting"] = "logistic",
+        estimator_type: Literal["logistic", "gradient_boosting", "xgboost"] = "logistic",
         random_state: int = 42,
+        xgb_params: dict[str, Any] | None = None,
+        xgb_early_stopping: bool = False,
     ) -> None:
         super().__init__()
         self.estimator_type = estimator_type
         self.random_state = random_state
+        self.xgb_params = xgb_params
+        self.xgb_early_stopping = xgb_early_stopping
 
         if estimator_type == "logistic":
             self.model = LogisticRegression(max_iter=1000, random_state=random_state)
         elif estimator_type == "gradient_boosting":
             self.model = HistGradientBoostingClassifier(random_state=random_state)
+        elif estimator_type == "xgboost":
+            from uplift.models.xgboost import make_early_stop_xgb, make_xgb_classifier
+
+            factory = make_early_stop_xgb if xgb_early_stopping else make_xgb_classifier
+            self.model = factory(random_state, **(xgb_params or {}))
         else:
             raise ValueError(f"Unknown estimator_type: {estimator_type}")
 

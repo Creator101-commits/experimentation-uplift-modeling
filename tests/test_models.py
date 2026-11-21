@@ -89,6 +89,48 @@ def test_doubly_robust_learner() -> None:
     assert not np.isnan(tau).any()
 
 
+def test_xgboost_learners_rank_positive_effect() -> None:
+    """XGB S/T/DR learners recover a known positive effect better than random."""
+    from uplift.evaluation.uplift_metrics import auuc_score
+
+    rng = np.random.default_rng(0)
+    n = 4000
+    X = rng.normal(size=(n, 4))
+    # Positive effect concentrated where f0 > 0.
+    tau_true = 0.35 * (X[:, 0] > 0.0)
+    mu0 = np.clip(0.05 + 0.02 * X[:, 1], 0.0, 1.0)
+    mu1 = np.clip(mu0 + tau_true, 0.0, 1.0)
+    W = rng.binomial(1, 0.8, size=n)
+    y = rng.binomial(1, np.where(W == 1, mu1, mu0))
+
+    n_tr = int(0.7 * n)
+    X_tr, X_te = X[:n_tr], X[n_tr:]
+    W_tr, W_te = W[:n_tr], W[n_tr:]
+    y_tr, y_te = y[:n_tr], y[n_tr:]
+
+    fast = {"n_estimators": 60, "max_depth": 3, "learning_rate": 0.15}
+    learners = {
+        "s_xgb": SLearner(estimator_type="xgboost", random_state=0, xgb_params=fast),
+        "t_xgb": TLearner(estimator_type="xgboost", random_state=0, xgb_params=fast),
+        "dr_xgb": DoublyRobustLearner(
+            n_splits=2, known_propensity=0.8, random_state=0,
+            outcome_estimator="xgboost", xgb_params=fast,
+        ),
+    }
+    rand = RandomPolicy(random_state=0).fit(X_tr, W_tr, y_tr)
+    tau_rand = rand.predict_uplift(X_te)
+    auuc_rand = auuc_score(y_te, W_te, tau_rand)
+
+    for name, learner in learners.items():
+        learner.fit(X_tr, W_tr, y_tr)
+        tau = learner.predict_uplift(X_te)
+        assert not np.isnan(tau).any(), name
+        auuc = auuc_score(y_te, W_te, tau)
+        assert auuc > auuc_rand, f"{name} AUUC {auuc} not above random {auuc_rand}"
+        # The model should assign higher uplift to the f0>0 (persuadable) half.
+        assert float(np.mean(tau[X_te[:, 0] > 0])) > float(np.mean(tau[X_te[:, 0] <= 0]))
+
+
 def test_random_and_outcome_only() -> None:
     rng = np.random.default_rng(42)
     X = rng.normal(size=(100, 3))
