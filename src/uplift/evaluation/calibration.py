@@ -18,6 +18,8 @@ class UpliftCalibrationBin:
     n_control: int
     mean_predicted_uplift: float
     observed_uplift: float
+    treated_rate: float
+    control_rate: float
     calibration_gap: float
 
 
@@ -67,6 +69,8 @@ def compute_uplift_calibration(
                 n_control=n_c,
                 mean_predicted_uplift=pred_mean,
                 observed_uplift=obs_lift,
+                treated_rate=p_t,
+                control_rate=p_c,
                 calibration_gap=gap,
             )
         )
