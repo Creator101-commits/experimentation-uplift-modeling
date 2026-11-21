@@ -14,7 +14,7 @@ uv run mypy src
 
 ## Platform support
 
-- macOS and Linux; Python 3.12.
+- macOS and Linux; Python 3.12-3.13.
 - Laptop development may use a fixed subset; this project has no deployment target.
 
 ## Key conventions

@@ -22,7 +22,7 @@ Build a reproducible Python study that moves from experiment design and average 
 - Evaluate treatment policies with inverse-propensity-weighted and doubly robust value estimates.
 - Assess uplift calibration by comparing predicted-uplift bins with observed randomized differences.
 - Report uncertainty with bootstrap intervals and repeated model seeds.
-- Track data hashes, assumptions, configurations, models, metrics, and figures in MLflow.
+- Track data hashes, assumptions, configurations, models, metrics, and figures in versioned JSON manifests and metrics artifacts.
 - Produce a command-line workflow and a complete research report.
 
 ### Explicitly outside v1
@@ -46,13 +46,13 @@ Build a reproducible Python study that moves from experiment design and average 
 
 ## Stack
 
-- **Language:** Python 3.12
+- **Language:** Python 3.12-3.13
 - **Packaging:** `uv`, `pyproject.toml`, and a lockfile
 - **Data:** pandas, NumPy, PyArrow, and Parquet
-- **Statistics:** SciPy and statsmodels
-- **Models:** scikit-learn, XGBoost, and scikit-uplift
-- **Tracking:** MLflow
-- **Visualization:** Matplotlib and seaborn
+- **Statistics:** SciPy
+- **Models:** scikit-learn and XGBoost
+- **Tracking:** JSON manifests, metrics, and selection artifacts under `results/`
+- **Visualization:** Matplotlib (ephemeral, figure script only)
 - **CLI:** Typer
 - **Quality:** pytest, pytest-cov, Ruff, mypy, and GitHub Actions
 
@@ -85,7 +85,7 @@ power/A-B analysis       train/validation/test split
              uncertainty + calibration + slice analysis
                                  |
                                  v
-                    MLflow + figures + report
+                 metrics + figures + report
 ```
 
 ### Components
@@ -143,7 +143,7 @@ Only `f0` through `f11` may be model features in the primary experiment. `exposu
 - `observations.parquet`: stable row ID, pre-treatment features, treatment, and outcomes
 - `train.parquet`, `validation.parquet`, and `test.parquet`: deterministic partitions
 - `manifest.json`: hashes, schema, row counts, split seed, treatment propensity, exclusions, and transformation version
-- `analysis_plan.yaml`: primary outcome, estimands, target fractions, metric definitions, and final comparison rules
+- `analysis_plan.json`: primary outcome, estimands, target fractions, metric definitions, and final comparison rules
 
 ### Split protocol
 
@@ -275,7 +275,7 @@ For each observation, models may estimate `mu1(x)`, the outcome probability unde
 **Status:** Complete.
 
 - **Work:** Add XGBoost S- and T-learners and a cross-fitted doubly robust estimator. Keep tuning bounded and validation-only.
-- **Verify:** Test fold isolation, propensity use, reproducible seeds, model serialization, and MLflow metadata.
+- **Verify:** Test fold isolation, propensity use, reproducible seeds, model serialization, and run metadata.
 - **Complete when:** Each advanced model can be trained and evaluated from one versioned configuration.
 
 ### Phase 6: Uplift evaluation and uncertainty
