@@ -81,8 +81,10 @@ echo "downloading kernel output to $OUT_DIR"
 "$KAGGLE_BIN" kernels output "$KERNEL_ID" -p "$OUT_DIR"
 
 # Guard against the dataset-version race: the run must reflect HEAD.
-MANIFEST="$OUT_DIR/benchmark/manifest.json"
-if [ -f "$MANIFEST" ]; then
+# The benchmark writes benchmark/manifest.json; the smoke kernel writes
+# benchmark_smoke/manifest.json, so match either.
+MANIFEST="$(find "$OUT_DIR" -path '*/benchmark*/manifest.json' | sort | head -1)"
+if [ -n "$MANIFEST" ] && [ -f "$MANIFEST" ]; then
   RUN_SHA="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("git_sha",""))' "$MANIFEST")"
   if [ "$RUN_SHA" != "$SHA" ]; then
     echo "error: run manifest git_sha=$RUN_SHA does not match HEAD $SHA" >&2
