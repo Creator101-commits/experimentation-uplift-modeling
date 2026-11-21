@@ -8,6 +8,7 @@ treatment x conversion strata.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import urllib.request
@@ -59,7 +60,8 @@ def download_criteo(dest_dir: Path) -> Path:
 
 def _detect_header(csv_path: Path) -> int | None:
     """Return 0 if the file has a header row, else None for headerless data."""
-    with csv_path.open("rb") as fh:
+    opener = gzip.open if csv_path.suffix == ".gz" else open
+    with opener(csv_path, "rb") as fh:
         first = fh.readline().decode("utf-8", "replace").strip().split(",")
     return 0 if first and first[0].strip().lower() == "f0" else None
 

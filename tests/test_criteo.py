@@ -138,6 +138,25 @@ def test_row_hashes_distinguish_beyond_float32(tmp_path: Path) -> None:
     assert manifest["duplicate_rows"] == 2
 
 
+def test_detect_header_gzipped(tmp_path: Path) -> None:
+    """Header sniffing must decompress .gz before reading the first line."""
+    with_header = tmp_path / "with.csv.gz"
+    pd.DataFrame({"f0": [1.0], "f1": [2.0]}).to_csv(with_header, index=False)
+    assert criteo._detect_header(with_header) == 0
+    no_header = tmp_path / "without.csv.gz"
+    pd.DataFrame([[1.0, 2.0]]).to_csv(no_header, index=False, header=False)
+    assert criteo._detect_header(no_header) is None
+
+
+def test_prepare_criteo_gzipped_with_header(tmp_path: Path) -> None:
+    """A gzipped CSV with a header must not parse the header as data."""
+    csv_path = tmp_path / "criteo.csv.gz"
+    _write_csv(csv_path, n=120, header=True)
+    out = tmp_path / "processed"
+    manifest = criteo.prepare_criteo(csv_path, out, chunksize=50, propensity_tolerance=0.05)
+    assert manifest["n_rows"] == 120
+
+
 def test_prepare_criteo_headerless(tmp_path: Path) -> None:
     csv_path = tmp_path / "criteo.csv"
     _write_csv(csv_path, n=120, header=False)
