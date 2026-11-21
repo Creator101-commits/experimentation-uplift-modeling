@@ -61,8 +61,9 @@ fi
 # mount the previous dataset version and fail the git_sha guard.
 sleep 300
 
-echo "pushing kernel $KERNEL_ID"
-"$KAGGLE_BIN" kernels push -p kaggle
+PUSH_DIR="$(dirname "$META")"
+echo "pushing kernel $KERNEL_ID from $PUSH_DIR"
+"$KAGGLE_BIN" kernels push -p "$PUSH_DIR"
 
 # Poll kernel status until a terminal state; bounded by the loop count.
 TERMINAL=""
