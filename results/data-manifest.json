@@ -1,0 +1,51 @@
+{
+  "source_url": "https://huggingface.co/datasets/criteo/criteo-uplift/resolve/2424920019e49d52d72c13ac1143ec5d53af276b/criteo-research-uplift-v2.1.csv.gz",
+  "source_revision": "2424920019e49d52d72c13ac1143ec5d53af276b",
+  "source_file": "criteo-research-uplift-v2.1.csv.gz",
+  "license": "CC BY-NC-SA 4.0",
+  "source_sha256": "2716e1bf0fd157a93b5bf86924d9088419dfbac2022c6cd90030220634f616dc",
+  "source_size_bytes": 311422618,
+  "transformation_version": "criteo-uplift-parquet-v1",
+  "split_seed": 42,
+  "n_rows": 13979592,
+  "duplicate_rows": 1259545,
+  "null_counts": {
+    "f0": 0,
+    "f1": 0,
+    "f2": 0,
+    "f3": 0,
+    "f4": 0,
+    "f5": 0,
+    "f6": 0,
+    "f7": 0,
+    "f8": 0,
+    "f9": 0,
+    "f10": 0,
+    "f11": 0,
+    "treatment": 0,
+    "conversion": 0,
+    "visit": 0,
+    "exposure": 0
+  },
+  "observed_treatment_rate": 0.8500001287591226,
+  "observed_conversion_rate": 0.002916680257907384,
+  "observed_visit_rate": 0.046992000911042324,
+  "observed_exposure_rate": 0.03063122299992732,
+  "stratum_counts": {
+    "0": 2092874,
+    "1": 4063,
+    "2": 11845944,
+    "3": 36711
+  },
+  "split_counts": {
+    "train": 8387755,
+    "validation": 2795919,
+    "test": 2795918
+  },
+  "split_treatment_rates": {
+    "train": 0.8500001490267658,
+    "validation": 0.8499999463503771,
+    "test": 0.8500002503649964
+  },
+  "known_propensity": 0.8500001490267658
+}

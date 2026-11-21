@@ -1,0 +1,23 @@
+{
+  "git_sha": "41bad9b5ca1b0be30793e58062631eb7a646c6f5",
+  "protocol": "uplift-benchmark-v1",
+  "analysis_plan_sha256": "fa307c4591a5800f8daad4e8dc5529113d191412eb0c9cdf9e3032afaade12d2",
+  "card_write_epoch": 1795297934433156744,
+  "first_test_read_epoch": 1795297935094868838,
+  "ordering_ok": true,
+  "known_propensity": 0.8500001490267658,
+  "timings": {
+    "load_seconds": 1.8928108215332031,
+    "validation_seconds": 1275.8639070987701,
+    "ab_report_seconds": 0.6617071628570557,
+    "test_eval_seconds": 1215.169843196869,
+    "bootstrap_seconds": 897.3441140651703
+  },
+  "total_seconds": 3628.8381707668304,
+  "partition_sizes": {
+    "train": 8387755,
+    "validation": 2795919,
+    "test": 2795918
+  },
+  "xgboost_device": "cuda"
+}
