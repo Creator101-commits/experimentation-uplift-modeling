@@ -1,8 +1,8 @@
 name,family,val_auuc
-treat_none,baseline,0.000925060169601215
-treat_all,baseline,0.000925060169601215
-random,baseline,0.0005947386868586607
-outcome_only,baseline,0.0010272582992840807
-s_learner_logistic,s_logistic,0.001027013316546281
-t_learner_logistic,t_logistic,0.0010310914885812315
-dr_logistic,dr_logistic,0.0010326416545994859
+treat_none,baseline,0.0005754189485723129
+treat_all,baseline,0.0005754189485723129
+random,baseline,0.0005953536856238468
+outcome_only,baseline,0.0010283210890658
+s_learner_logistic,s_logistic,0.001028183359984675
+t_learner_logistic,t_logistic,0.0010322688077894276
+dr_logistic,dr_logistic,0.0010333464676750472
