@@ -120,12 +120,40 @@ The benchmark follows a frozen protocol (`uplift-benchmark-v1`, see
 - Policy value uses the known randomized propensity
   (0.8500001490267658), verified against observed assignment rates per
   split within 0.001.
-- Primary metrics are the Qini coefficient, normalized AUUC, and
-  uplift@10/20/30 targeting gains. Uncertainty is a paired Poisson(1)
-  weighted bootstrap (500 resamples, seed 0, percentile 95% intervals).
+- Ranking metrics are tie-block aware: cumulative curves are evaluated
+  only at distinct-score boundaries and connected linearly (the
+  scikit-uplift convention), and budget cutoffs that fall inside a tie
+  block interpolate the cumulative weighted sums, matching expected
+  random tie-breaking. The same logic runs in the weighted bootstrap.
+- `treat_none` and `treat_all` are constant policies, not rankings:
+  their policy values are the control and treated means estimated with
+  the known propensity (IPW and DR), and they are excluded from AUUC,
+  Qini, uplift@k, and calibration tables (reported as N/A, not zero).
+  `outcome_only` is a valid ranking baseline ranked by predicted
+  conversion probability but has no uplift estimate, so it is excluded
+  from uplift calibration. `random` remains the ranking reference.
+- Policy gain is the policy value at each budget minus the `treat_all`
+  constant value and minus the `random` policy value, for both IPW and
+  DR estimators.
+- Primary metrics are the Qini coefficient (unnormalized excess area
+  above the random-targeting line), the AUUC (trapezoidal area under
+  the cumulative uplift-gain curve), and uplift@10/20/30 targeting
+  gains. Uncertainty is a paired Poisson(1) weighted bootstrap (500
+  resamples, seed 0, percentile 95% intervals) shared across models.
+- Stochastic learners (random, DR-logistic, DR-XGBoost, and the
+  selected XGBoost S/T learners) run at seeds 0, 1, and 2; per-seed
+  rows are in `test_metrics.csv` and `seed_summary` reports the mean
+  and across-seed range. Each row also records model size in bytes,
+  runtime, and outcome-model log loss and Brier score for `mu0`/`mu1`
+  where defined.
 - Uplift calibration compares predicted-uplift deciles against observed
-  treated-minus-control rates; the reported `calibration_mean_gap` is the
-  mean absolute gap across the 10 equal-count bins.
+  treated-minus-control rates in 10 equal-count bins; the reported
+  `calibration_mean_gap` is the mean absolute gap across bins.
+- `metrics.json` persists the full evidence: per-model per-seed Qini
+  curves (101 points) plus the random line, calibration bins, uplift
+  deciles, quantile slices of the top-3 T-XGBoost gain features, policy
+  gains, and paired bootstrap differences against the outcome-only and
+  logistic T-learner references.
 - Duplicate source rows (1,259,545) are counted in the data manifest and
   retained, matching the source release.
 
@@ -134,9 +162,12 @@ The benchmark follows a frozen protocol (`uplift-benchmark-v1`, see
 [(Back to top)](#table-of-contents)
 
 Frozen Kaggle run `uplift-benchmark-v1` at git SHA
-`41bad9b5ca1b0be30793e58062631eb7a646c6f5` (ordering guard passed;
-`xgboost_device=cuda`; total runtime about 60 minutes). Curated
-artifacts are in `results/`; every number below traces to those files.
+`cc1ff94cf0d666858790f279b68e09372e95e836` (ordering guard passed;
+`xgboost_device=cuda`; total runtime about 110 minutes). This rerun
+replaced the first publication after a tie-handling defect was found:
+tied scores previously inherited source-file order, which let constant
+baselines score as if they ranked the file. Curated artifacts are in
+`results/`; every number below traces to those files.
 
 Data validation (`results/data-manifest.json`): 13,979,592 rows; 16-column
 schema; zero nulls; observed treatment rate 0.8500, conversion rate
@@ -152,24 +183,30 @@ the interval excludes zero and the post-hoc power at the observed
 effect is 1.0.
 
 Model selection used validation AUUC only: the XGBoost grid selected
-`s_learner_xgb_d4_lr0.1` (validation AUUC 0.001039) and
-`t_learner_xgb_d4_lr0.05` (0.000959); fixed baselines and learners are
+`s_learner_xgb_d4_lr0.05` (validation AUUC 0.001048) and
+`t_learner_xgb_d4_lr0.05` (0.000951); fixed baselines and learners are
 listed in `results/selection/`.
 
-Frozen test metrics (`results/metrics.json` -> `test_metrics`, 95%
-bootstrap CIs):
+Frozen test metrics (`results/metrics.json` -> `bootstrap.models`,
+point estimates with 95% paired Poisson bootstrap CIs; stochastic
+learners aggregate seeds 0-2):
 
 | model | AUUC | Qini | uplift@20 |
 | --- | --- | --- | --- |
-| S-XGB d4 lr0.1 | 0.00105 [0.00091, 0.00120] | 1142.6 [975.7, 1317.3] | 0.00517 [0.00446, 0.00587] |
-| T-logistic | 0.00103 [0.00089, 0.00117] | 1097.1 [931.1, 1260.9] | 0.00488 [0.00417, 0.00561] |
-| outcome only | 0.00103 [0.00088, 0.00117] | 1079.5 [910.1, 1243.7] | 0.00490 [0.00418, 0.00561] |
-| S-logistic | 0.00103 [0.00088, 0.00117] | 1079.7 [910.4, 1244.0] | 0.00490 [0.00419, 0.00562] |
-| DR-logistic | 0.00103 [0.00088, 0.00117] | 1077.1 [912.7, 1241.8] | 0.00483 [0.00411, 0.00554] |
-| DR-XGBoost | 0.00103 [0.00088, 0.00117] | 1077.1 [913.6, 1243.7] | 0.00480 [0.00408, 0.00552] |
-| treat none / all | 0.00094 [0.00085, 0.00102] | 1008.7 [934.6, 1079.5] | 0.00000 |
-| T-XGB d4 lr0.05 | 0.00093 [0.00081, 0.00107] | 858.7 [689.8, 1022.8] | 0.00451 [0.00385, 0.00517] |
-| random | 0.00055 [0.00046, 0.00064] | -69.3 [-166.3, 37.7] | 0.00108 [0.00077, 0.00138] |
+| S-XGB d4 lr0.05 | 0.00105 [0.00090, 0.00119] | 1124.3 [955.3, 1294.6] | 0.00506 [0.00435, 0.00581] |
+| T-logistic | 0.00103 [0.00089, 0.00117] | 1097.7 [931.9, 1261.7] | 0.00488 [0.00417, 0.00561] |
+| S-logistic | 0.00103 [0.00088, 0.00117] | 1080.7 [910.9, 1245.0] | 0.00490 [0.00419, 0.00562] |
+| outcome-only | 0.00103 [0.00088, 0.00117] | 1080.3 [910.4, 1244.6] | 0.00490 [0.00418, 0.00561] |
+| DR-XGBoost | 0.00103 [0.00088, 0.00117] | 1079.9 [916.0, 1246.4] | 0.00481 [0.00408, 0.00553] |
+| DR-logistic | 0.00103 [0.00088, 0.00117] | 1078.3 [913.9, 1243.1] | 0.00482 [0.00410, 0.00554] |
+| T-XGB d4 lr0.05 | 0.00091 [0.00077, 0.00104] | 802.8 [614.2, 972.1] | 0.00443 [0.00372, 0.00515] |
+| random | 0.00055 [0.00046, 0.00064] | -69.3 [-165.7, 37.5] | 0.00108 [0.00077, 0.00138] |
+| treat-none / treat-all | n/a | n/a | n/a |
+
+Constant-policy values (`bootstrap.models.policy_treat_*`, IPW with the
+known propensity; DR agrees to ~1e-9): treat-none 0.1936%
+[0.1813, 0.2072] and treat-all 0.3089% [0.3022, 0.3159], matching the
+raw arm rates.
 
 ## Findings
 
@@ -179,35 +216,49 @@ bootstrap CIs):
   effect: 0.115 percentage points absolute (0.194% to 0.309% conversion),
   59.4% relative, NNT about 868.
 - The gradient-boosted S-learner is nominally best on every ranking
-  metric (AUUC 0.00105, Qini 1142.6, uplift@20 0.00517), but its paired
-  difference against the logistic T-learner includes zero on both AUUC
-  (+0.000019, CI [-0.000006, +0.000047]) and Qini (+44.2, CI [-16.0,
-  +110.0]). No learner is significantly better than the logistic
-  T-learner.
+  metric (AUUC 0.00105, Qini 1124.3, uplift@20 0.00506), but no paired
+  difference against the references excludes zero: versus the logistic
+  T-learner AUUC +0.000011 (CI [-0.000010, +0.000032]) and Qini +24.6
+  (CI [-25.8, +74.0]); versus outcome-only AUUC +0.000018 (CI
+  [-0.000002, +0.000037]) and Qini +41.9 (CI [-4.7, +88.2]). No learner
+  is significantly better than the logistic T-learner.
 - The outcome-only baseline, which ranks by predicted conversion
   probability and ignores treatment, is statistically
   indistinguishable from the logistic T-learner on AUUC (-0.000007,
-  CI [-0.000017, +0.000003]) and Qini (-17.4, CI [-41.2, +5.8]); the
+  CI [-0.000017, +0.000003]) and Qini (-17.2, CI [-41.5, +5.9]); the
   same holds for the S-logistic, DR-logistic, DR-XGBoost, and S-XGBoost
   learners. Only the T-learner XGBoost sits significantly below the
-  reference. On this dataset, modeling the treatment effect adds no
+  references. On this dataset, modeling the treatment effect adds no
   statistically detectable ranking gain over outcome propensity alone.
-- The T-learner XGBoost variant is significantly worse than the
-  logistic T-learner (AUUC -0.00010, CI [-0.00015, -0.00005]; Qini
-  -244.7, CI [-369.9, -121.5]) despite being the best T-learner XGBoost
-  grid cell on validation.
-- Random targeting is significantly worse than the learners (AUUC
-  -0.00049, CI [-0.00057, -0.00041]; Qini -1169.0, CI [-1375.0,
-  -990.0]) and its own Qini interval includes zero.
-- Learned rankings beat the degenerate constant policies: the logistic
-  T-learner exceeds treat-all on AUUC by +0.00010 (CI [0.00003,
-  0.00017]).
-- Calibration is good for the learners: mean absolute bin gaps are
-  0.00006 to 0.0006. Random ranking has a gap of 0.499 and treat-none
-  0.00115, on the order of the average lift it fails to model.
+- The T-learner XGBoost variant is significantly worse than both
+  references (versus outcome-only AUUC -0.000118, CI [-0.000180,
+  -0.000057], Qini -282.7, CI [-429.4, -135.4]; versus the logistic
+  T-learner AUUC -0.000125, CI [-0.000187, -0.000063]) despite being
+  the best T-learner XGBoost grid cell on validation.
+- Random targeting is significantly worse than every learner and
+  baseline (versus the logistic T-learner AUUC -0.000488, CI
+  [-0.000574, -0.000412]; Qini -1169.6, CI [-1376.3, -990.7]) and its
+  own Qini interval includes zero, as a random ranking should.
+- Constant policies are reported as policy values, not rankings:
+  treat-none is the control mean 0.1936% and treat-all the treated mean
+  0.3089% under IPW/DR with the known propensity. Because the average
+  treatment effect is positive, treat-all maximizes total conversions:
+  every ranking policy's DR policy gain versus treat-all is negative at
+  all three budgets with intervals below zero (least-bad: DR-XGB
+  -0.0131 pp at 10%, S-XGB -0.0079 pp at 20% and -0.0063 pp at 30%).
+  Targeting concentrates the effect but cannot beat treating everyone
+  on total policy value; versus random, every learned policy gains
+  +0.09 to +0.10 pp at the 10% budget with intervals excluding zero.
+- Calibration is good for the learners: mean absolute bin gaps run from
+  0.00006 (S-XGB, the best) to 0.0006 (T-XGB 0.00056, DR-XGBoost
+  0.00059); the logistic learners sit in between. `outcome_only` has no
+  uplift estimate and is excluded from calibration by design.
 - Absolute targeting gains are small: even the best model's top-20%
   cohort shows a treated-minus-control conversion difference of about
-  0.52 percentage points, and learner intervals overlap heavily.
+  0.51 percentage points, and learner intervals overlap heavily.
+- Stochastic learners are stable across seeds 0-2: AUUC ranges span at
+  most ~3e-5 (e.g., S-XGB 0.001046-0.001056), far below the bootstrap
+  interval widths, so seed noise does not drive the comparisons.
 
 ## Development
 [(Back to top)](#table-of-contents)
@@ -258,14 +309,12 @@ Project link: [https://github.com/Creator101-commits/experimentation-uplift-mode
   not observed individual counterfactuals.
 - Results describe one frozen 60/20/20 split of one dataset version;
   they do not establish effects on other populations or time periods.
-- The published `results/metrics.json` retains paired bootstrap
-  differences only against the logistic T-learner reference (and the
-  T-learner against treat-all) because of a bookkeeping defect fixed in
-  commit `39499e6` after the run; per-model confidence intervals are
-  complete.
-- The benchmark did not persist per-model Qini curves or calibration
-  bins, so `image.png` shows the scalar curve summaries (Qini
-  coefficient, AUUC) with confidence intervals rather than full curves.
+- This rerun replaced an earlier publication that mis-ordered tied
+  scores by source row; all ranking metrics are now tie-block aware and
+  invariant to within-tie permutations (see REVIEW.md).
+- Policy-value gains versus treat-all are negative for every ranking
+  policy because the average treatment effect is positive; they measure
+  total conversions, not incremental targeting benefit.
 - 1,259,545 duplicate source rows were counted and retained, matching
   the source release; they may inflate effective sample size slightly.
 - The CLI demo commands (`power`, `ab-test`, `compare`, `report`) still
@@ -288,7 +337,7 @@ Project link: [https://github.com/Creator101-commits/experimentation-uplift-mode
 - Original dataset description:
   [Criteo uplift dataset](https://ailab.criteo.com/criteo-uplift-prediction-dataset/).
 - Benchmark run: private Kaggle kernel at git SHA
-  `41bad9b5ca1b0be30793e58062631eb7a646c6f5`, protocol
+  `cc1ff94cf0d666858790f279b68e09372e95e836`, protocol
   `uplift-benchmark-v1`; `results/manifest.json` records the epoch
   ordering guard, timings, and partition sizes.
 
