@@ -1,9 +1,13 @@
-"""Reproduce image.png from the curated Kaggle benchmark outputs.
+"""Render image.png from the committed results/ benchmark outputs.
 
-Reads results/metrics.json, results/manifest.json, and
-results/data-manifest.json, writes the plotted values to
-scripts/figure-data.json, and renders image.png. Requires Matplotlib;
-run with `uv run --with matplotlib python scripts/render_figure.py`.
+Panels: (a) Qini curves for every learner plus the random line, (b)
+cumulative uplift gain for every learner plus the random mean, (c)
+uplift@k with bootstrap CIs, (d) calibration for the top-3 learners,
+(e) DR policy gain vs random, (f) A/B effect on the full dataset,
+(g) observed uplift by predicted-uplift decile for the best learner.
+
+Requires Matplotlib; run with
+`uv run --with matplotlib python scripts/render_figure.py`.
 Set UPLIFT_RESULTS_DIR to render from a different results directory.
 """
 
@@ -11,52 +15,29 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 import matplotlib
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import numpy as np
-from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
-from matplotlib.ticker import MaxNLocator
-
-plt.rcParams.update(
-    {
-        "font.family": "DejaVu Sans",
-        "font.size": 10,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "axes.titleweight": "bold",
-        "figure.facecolor": "white",
-    }
-)
+import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.ticker as mticker  # noqa: E402
+import numpy as np  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
+from matplotlib.ticker import MaxNLocator  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 RESULTS = Path(os.environ.get("UPLIFT_RESULTS_DIR", ROOT / "results"))
+OUT = ROOT / "image.png"
 
-FAMILY_COLOR = {
-    "baseline": "#64748b",
-    "s_logistic": "#4169e1",
-    "t_logistic": "#10a68b",
-    "dr_logistic": "#d95f45",
-    "s_xgb": "#8659cf",
-    "t_xgb": "#e8a13a",
-    "dr_xgb": "#5aa9e6",
-}
 BUDGETS = ("uplift_at_10", "uplift_at_20", "uplift_at_30")
 BUDGET_LABELS = ("top 10%", "top 20%", "top 30%")
 GAIN_KEYS_RANDOM = tuple(
     f"dr_gain_vs_random_{b.removeprefix('uplift_at_')}" for b in BUDGETS
 )
 LEARNER_PREFIXES = ("s_learner", "t_learner", "dr_")
-LEGEND_KW = {
-    "frameon": True,
-    "facecolor": "white",
-    "framealpha": 0.85,
-    "edgecolor": "#cbd5e1",
-}
 
 
 def _display(name: str) -> str:
@@ -83,29 +64,27 @@ def _is_learner(name: str) -> bool:
     return name.startswith(LEARNER_PREFIXES)
 
 
-def _load() -> tuple[dict, dict, dict]:
-    metrics = json.loads((RESULTS / "metrics.json").read_text())
-    manifest = json.loads((RESULTS / "manifest.json").read_text())
-    data_manifest = json.loads((RESULTS / "data-manifest.json").read_text())
-    return metrics, manifest, data_manifest
+def _model_style(name: str) -> tuple[str, str, str]:
+    """(color, linestyle, bar hatch) per learner.
 
-
-def _family_by_name(metrics: dict) -> dict[str, str]:
-    fam: dict[str, str] = {}
-    for row in metrics["test_metrics"]:
-        fam.setdefault(row["name"], row["family"])
-    return fam
-
-
-def _ranking_models(metrics: dict) -> list[str]:
-    """Models with ranking metrics, ordered by AUUC point estimate."""
-    models = metrics["bootstrap"]["models"]
-    names = [n for n in models if not n.startswith("policy_")]
-    return sorted(
-        names,
-        key=lambda n: models[n]["point"].get("auuc") or float("-inf"),
-        reverse=True,
-    )
+    Hue encodes the learner family (S/T/DR), dash and hatch encode the
+    backend, so all eight series stay distinguishable inside the
+    six-color palette.
+    """
+    if name == "random":
+        return GRAY, "--", ""
+    if name == "outcome_only":
+        return AMBER, "-", ""
+    if name.startswith("s_learner"):
+        xgb = "xgb" in name
+        return BLUE, ("--" if xgb else "-"), ("//" if xgb else "")
+    if name.startswith("t_learner"):
+        xgb = "xgb" in name
+        return TEAL, ("--" if xgb else "-"), ("//" if xgb else "")
+    if name.startswith("dr_"):
+        xgb = "xgb" in name
+        return CORAL, ("--" if xgb else "-"), ("//" if xgb else "")
+    return INK, "-", ""
 
 
 def _seed_entries(section: dict, model: str) -> dict[str, object]:
@@ -136,188 +115,513 @@ def _mean_bins(seed_bins: dict[str, list[dict]]) -> list[dict]:
     return out
 
 
+def _line_legend_handles(names: list[str]) -> list[Line2D]:
+    return [
+        Line2D(
+            [0], [0],
+            color=_model_style(n)[0],
+            ls=_model_style(n)[1],
+            lw=1.8,
+            label=_display(n),
+        )
+        for n in names
+    ]
+
+
+def _bar_legend_handles(names: list[str]) -> list[Patch]:
+    return [
+        Patch(
+            facecolor=_model_style(n)[0],
+            hatch=_model_style(n)[2] or None,
+            edgecolor="white",
+            label=_display(n),
+        )
+        for n in names
+    ]
+
+
+INK = "#1F2A37"
+BLUE = "#3B6EA8"
+TEAL = "#2A9D8F"
+AMBER = "#E9A23B"
+CORAL = "#D1495B"
+GRAY = "#9AA5B1"
+GRID = "#EEF0F2"
+SPINE = "#B8BEC6"
+TICK_LABEL = "#4A5361"
+
+plt.rcParams.update(
+    {
+        "font.family": "serif",
+        "font.serif": ["cmr10"],
+        "mathtext.fontset": "cm",
+        "axes.formatter.use_mathtext": True,
+        "axes.unicode_minus": False,
+        "figure.facecolor": "white",
+        "savefig.facecolor": "white",
+        "axes.titlesize": 11,
+        "axes.labelsize": 10,
+        "xtick.labelsize": 8.5,
+        "ytick.labelsize": 8.5,
+        "legend.fontsize": 8,
+        "legend.frameon": False,
+        "text.color": INK,
+        "axes.labelcolor": INK,
+        "axes.edgecolor": SPINE,
+        "axes.linewidth": 0.8,
+        "xtick.color": SPINE,
+        "ytick.color": SPINE,
+        "xtick.labelcolor": TICK_LABEL,
+        "ytick.labelcolor": TICK_LABEL,
+        "xtick.direction": "out",
+        "ytick.direction": "out",
+        "xtick.major.size": 3,
+        "ytick.major.size": 3,
+        "xtick.major.width": 0.6,
+        "ytick.major.width": 0.6,
+    }
+)
+
+DPI = 150
+
+def _fmt2(x: float, _pos: int) -> str:
+    """Up to 2 decimals inside mathtext; large values as integers."""
+    if x == 0:
+        return "$0$"
+    if abs(x) >= 1000:
+        return f"${x:.0f}$"
+    s = f"{x:.2f}".rstrip("0").rstrip(".")
+    if s in ("", "-0"):
+        return "$0$"
+    return f"${s}$"
+
+
+CATEGORICAL: list[tuple[plt.Axes, str, list[str]]] = []
+
+
+def style(
+    ax: plt.Axes,
+    letter: str,
+    title: str,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    grid: bool = True,
+) -> None:
+    ax.set_title(f"({letter}) {title}", loc="left", fontsize=11, color=INK)
+    if xlabel is not None:
+        ax.set_xlabel(xlabel, fontsize=10, color=INK)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel, fontsize=10, color=INK)
+    for name in ("top", "right"):
+        ax.spines[name].set_visible(False)
+    for name in ("left", "bottom"):
+        ax.spines[name].set_visible(True)
+        ax.spines[name].set_color(SPINE)
+        ax.spines[name].set_linewidth(0.8)
+    ax.tick_params(
+        axis="both",
+        direction="out",
+        length=3,
+        width=0.6,
+        color=SPINE,
+        labelcolor=TICK_LABEL,
+        labelsize=8.5,
+    )
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(_fmt2))
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(_fmt2))
+    if grid:
+        ax.grid(axis="y", color=GRID, linewidth=0.6)
+        ax.set_axisbelow(True)
+
+
+def cat(
+    ax: plt.Axes,
+    axis: str,
+    positions: list[int] | range,
+    labels: list[str],
+    rotation: float = 0,
+    ha: str | None = None,
+    fontsize: float | None = None,
+) -> None:
+    """Categorical ticks: FixedLocator + FixedFormatter applied AFTER
+    style(), so the numeric FuncFormatter cannot clobber the labels.
+    Rotation/alignment/fontsize are set on the label Texts directly."""
+    labels = list(labels)
+    if axis == "x":
+        ax.set_xticks(positions)
+        ax.xaxis.set_major_locator(mticker.FixedLocator(positions))
+        ax.xaxis.set_major_formatter(mticker.FixedFormatter(labels))
+        ax.xaxis.set_minor_locator(mticker.NullLocator())
+        texts = ax.get_xticklabels()
+    else:
+        ax.set_yticks(positions)
+        ax.yaxis.set_major_locator(mticker.FixedLocator(positions))
+        ax.yaxis.set_major_formatter(mticker.FixedFormatter(labels))
+        ax.yaxis.set_minor_locator(mticker.NullLocator())
+        texts = ax.get_yticklabels()
+    for t in texts:
+        if rotation:
+            t.set_rotation(rotation)
+        if ha:
+            t.set_ha(ha)
+        if fontsize:
+            t.set_fontsize(fontsize)
+    CATEGORICAL.append((ax, axis, labels))
+
+
+def verify_categories() -> None:
+    bad = []
+    for ax, axis, expected in CATEGORICAL:
+        got = [
+            t.get_text()
+            for t in (ax.get_xticklabels() if axis == "x" else ax.get_yticklabels())
+        ]
+        if got != expected:
+            bad.append((axis, expected, got))
+    CATEGORICAL.clear()
+    if bad:
+        details = "; ".join(f"{a} expected={e} got={g}" for a, e, g in bad)
+        raise RuntimeError(f"categorical tick labels mismatch: {details}")
+
+
+def _all_texts(fig: plt.Figure) -> list[plt.Text]:
+    items = []
+    for ax in fig.axes:
+        cand = [ax.title, ax.xaxis.label, ax.yaxis.label]
+        cand += list(ax.texts)
+        for axis in (ax.xaxis, ax.yaxis):
+            try:
+                ticks = axis._update_ticks()  # noqa: SLF001
+            except Exception:
+                ticks = []
+            for tick in ticks:
+                lab = tick.label1
+                if lab.get_text():
+                    cand.append(lab)
+        leg = ax.get_legend()
+        if leg is not None:
+            cand += list(leg.get_texts())
+        for t in cand:
+            try:
+                if t.get_text() and t.get_visible():
+                    items.append(t)
+            except Exception:
+                pass
+    return items
+
+
+def check_text_overlap(fig: plt.Figure) -> list[str]:
+    fig.canvas.draw()
+    fig.canvas.draw()
+    ren = fig.canvas.get_renderer()
+    W, H = fig.canvas.get_width_height()
+    boxes = []
+    for t in _all_texts(fig):
+        bb = t.get_window_extent(ren)
+        boxes.append((t.get_text()[:40], bb))
+    problems = []
+    for i, (s1, b1) in enumerate(boxes):
+        if b1.x0 < -1 or b1.y0 < -1 or b1.x1 > W + 1 or b1.y1 > H + 1:
+            problems.append(f"OUT-OF-FIGURE {s1!r} bbox={b1}")
+        for s2, b2 in boxes[i + 1 :]:
+            ix = min(b1.x1, b2.x1) - max(b1.x0, b2.x0)
+            iy = min(b1.y1, b2.y1) - max(b1.y0, b2.y0)
+            if ix > 1.5 and iy > 1.5:
+                inter = ix * iy
+                small = min(b1.width * b1.height, b2.width * b2.height)
+                if inter > max(8.0, 0.10 * small):
+                    problems.append(f"OVERLAP {s1!r} x {s2!r} area={inter:.0f}px2")
+    return problems
+
+
+def check_legend_data(fig: plt.Figure) -> list[str]:
+    """Count data markers/vertices falling inside legend boxes."""
+    fig.canvas.draw()
+    fig.canvas.draw()
+    ren = fig.canvas.get_renderer()
+    out = []
+    for ax in fig.axes:
+        leg = ax.get_legend()
+        if leg is None:
+            continue
+        lb = leg.get_window_extent(ren)
+        covered = 0
+        total = 0
+        for coll in ax.collections:
+            offs = coll.get_offsets()
+            if len(offs) == 0 or len(offs) > 2000:
+                continue
+            pts = ax.transData.transform(offs)
+            inside = (
+                (pts[:, 0] > lb.x0)
+                & (pts[:, 0] < lb.x1)
+                & (pts[:, 1] > lb.y0)
+                & (pts[:, 1] < lb.y1)
+            ).sum()
+            covered += int(inside)
+            total += len(offs)
+        for line in ax.lines:
+            if line.get_transform() != ax.transData:
+                continue
+            try:
+                pts = ax.transData.transform(line.get_path().vertices)
+            except Exception:
+                continue
+            inside = (
+                (pts[:, 0] > lb.x0)
+                & (pts[:, 0] < lb.x1)
+                & (pts[:, 1] > lb.y0)
+                & (pts[:, 1] < lb.y1)
+            ).sum()
+            covered += int(inside)
+            total += len(pts)
+        for patch in ax.patches:
+            try:
+                pb = patch.get_window_extent(ren)
+            except Exception:
+                continue
+            if pb.x0 < lb.x1 and pb.x1 > lb.x0 and pb.y0 < lb.y1 and pb.y1 > lb.y0:
+                covered += 1
+            total += 1
+        if covered:
+            out.append(f"legend covers ~{covered}/{total} data items")
+    return out
+
+
+def check_annotation_data(fig: plt.Figure) -> list[str]:
+    """In-axes annotations vs plotted data."""
+    fig.canvas.draw()
+    fig.canvas.draw()
+    ren = fig.canvas.get_renderer()
+    out = []
+    for ax in fig.axes:
+        for t in ax.texts:
+            if not t.get_text() or not t.get_visible():
+                continue
+            tb = t.get_window_extent(ren)
+            hits = 0
+            for line in ax.lines:
+                if line.get_transform() != ax.transData:
+                    continue
+                pts = ax.transData.transform(line.get_path().vertices)
+                hits += int(
+                    (
+                        (pts[:, 0] > tb.x0)
+                        & (pts[:, 0] < tb.x1)
+                        & (pts[:, 1] > tb.y0)
+                        & (pts[:, 1] < tb.y1)
+                    ).sum()
+                )
+            for coll in ax.collections:
+                offs = coll.get_offsets()
+                if len(offs) == 0 or len(offs) > 5000:
+                    continue
+                pts = ax.transData.transform(offs)
+                hits += int(
+                    (
+                        (pts[:, 0] > tb.x0)
+                        & (pts[:, 0] < tb.x1)
+                        & (pts[:, 1] > tb.y0)
+                        & (pts[:, 1] < tb.y1)
+                    ).sum()
+                )
+            if hits:
+                out.append(f"'{t.get_text()}' overlaps ~{hits} data pts")
+    return out
+
+
+def check_legend_pixels(fig: plt.Figure, path: Path) -> list[str]:
+    """Saturated (colored) data pixels showing through legend boxes."""
+    if not path.exists():
+        return []
+    img = plt.imread(path)
+    H, W = img.shape[:2]
+    rgb = img[..., :3]
+    spread = rgb.max(axis=2) - rgb.min(axis=2)
+    colored = spread > 0.18
+    def _collect(o: object, swatches: list) -> None:
+        if type(o).__name__ == "DrawingArea":
+            swatches.append(o)
+            return
+        try:
+            children = o.get_visible_children()
+        except Exception:
+            children = []
+        for c in children:
+            _collect(c, swatches)
+
+    out = []
+    for ax in fig.axes:
+        leg = ax.get_legend()
+        if leg is None:
+            continue
+        bb = leg.get_window_extent(fig.canvas.get_renderer())
+        x0, x1 = int(bb.x0), min(int(bb.x1) + 1, W)
+        y0, y1 = max(0, int(H - bb.y1)), min(H, int(H - bb.y0) + 1)
+        if x1 <= x0 or y1 <= y0:
+            continue
+        region = colored[y0:y1, x0:x1].copy()
+        # mask every legend handle swatch (any column) so only data-colored
+        # bleed through the legend body counts; swatches live in
+        # DrawingArea children of the legend's offset box
+        swatches: list = []
+        box = getattr(leg, "_legend_handle_box", None)
+        if box is not None:
+            _collect(box, swatches)
+        for sw in swatches:
+            try:
+                hb = sw.get_window_extent(fig.canvas.get_renderer())
+            except Exception:
+                continue
+            if not all(np.isfinite([hb.x0, hb.x1, hb.y0, hb.y1])):
+                continue
+            pad = 3
+            hx0, hx1 = int(hb.x0) - x0 - pad, int(hb.x1) - x0 + pad
+            hy0, hy1 = int(H - hb.y1) - y0 - pad, int(H - hb.y0) - y0 + pad
+            rx0, rx1 = max(0, hx0), min(region.shape[1], hx1)
+            ry0, ry1 = max(0, hy0), min(region.shape[0], hy1)
+            if rx1 > rx0 and ry1 > ry0:
+                region[ry0:ry1, rx0:rx1] = False
+        frac = region.mean() if region.size else 0.0
+        if frac > 0.015:
+            out.append(f"legend body ~{frac:.1%} covered by data color")
+    return out
+
+
+def finish(fig: plt.Figure, out: Path) -> None:
+    """Verify categorical labels, save, then fail on any check violation."""
+    fig.canvas.draw()
+    fig.canvas.draw()
+    verify_categories()
+    fig.savefig(out, dpi=DPI, facecolor="white")
+    problems: list[str] = []
+    problems += check_text_overlap(fig)
+    problems += check_legend_data(fig)
+    problems += check_annotation_data(fig)
+    problems += check_legend_pixels(fig, out)
+    plt.close(fig)
+    if problems:
+        for p in problems[:30]:
+            print(f"  CHECK FAIL: {p}", file=sys.stderr)
+        sys.exit(f"figure checks failed for {out.name}: {len(problems)} problem(s)")
+    print("wrote", out)
+
+
+
+
 def main() -> None:
-    metrics, manifest, data_manifest = _load()
-    n_test = manifest["partition_sizes"]["test"]
+    metrics = json.loads((RESULTS / "metrics.json").read_text())
     ab = metrics["ab_report"]
     boot_models = metrics["bootstrap"]["models"]
-    fam = _family_by_name(metrics)
-    ranking = _ranking_models(metrics)
+    fam = {}
+    for row in metrics["test_metrics"]:
+        fam.setdefault(row["name"], row["family"])
+    ranking = sorted(
+        [n for n in boot_models if not n.startswith("policy_")],
+        key=lambda n: boot_models[n]["point"].get("auuc") or float("-inf"),
+        reverse=True,
+    )
     learners = [n for n in ranking if _is_learner(n)]
-    color_of = {
-        n: FAMILY_COLOR.get(fam.get(n, ""), "#334155") for n in ranking
-    }
-
-    # Panel helpers shared across the grid.
-    def model_color(n: str) -> str:
-        return color_of[n]
-
-    figure_data = {
-        "source": f"kaggle {manifest['protocol']} sha {manifest['git_sha'][:7]}",
-        "git_sha": manifest["git_sha"],
-        "protocol": manifest["protocol"],
-        "ordering_ok": manifest["ordering_ok"],
-        "test_rows": n_test,
-        "ab_report": ab,
-        "models": {
-            n: {
-                "display": _display(n),
-                "family": fam.get(n),
-                "color": color_of[n],
-                "auuc_point": boot_models[n]["point"].get("auuc"),
-                "auuc_ci": boot_models[n]["ci"].get("auuc"),
-                "qini_point": boot_models[n]["point"].get("qini"),
-                "qini_ci": boot_models[n]["ci"].get("qini"),
-            }
-            for n in ranking
-        },
-        "constant_policies": {
-            n: {
-                "ipw_policy_value_10": boot_models[n]["point"].get(
-                    "ipw_policy_value_10"
-                ),
-                "ipw_policy_value_10_ci": boot_models[n]["ci"].get(
-                    "ipw_policy_value_10"
-                ),
-                "dr_policy_value_10": boot_models[n]["point"].get(
-                    "dr_policy_value_10"
-                ),
-                "dr_policy_value_10_ci": boot_models[n]["ci"].get(
-                    "dr_policy_value_10"
-                ),
-            }
-            for n in ("policy_treat_none", "policy_treat_all")
-            if n in boot_models
-        },
-        "policy_gains_dr_vs_random": {
-            n: {
-                k: metrics["bootstrap"]["policy_gains"][n][k]
-                for k in GAIN_KEYS_RANDOM
-                if k in metrics["bootstrap"]["policy_gains"].get(n, {})
-            }
-            for n in ranking
-            if n != "random"
-        },
-        "paired_diffs": metrics["bootstrap"].get("paired_diffs", {}),
-        "data_manifest": {
-            "n_rows": data_manifest["n_rows"],
-            "duplicate_rows": data_manifest["duplicate_rows"],
-            "source_sha256": data_manifest["source_sha256"],
-            "license": data_manifest["license"],
-        },
-        "notes": [
-            "Qini panel plots every persisted per-seed curve (fracs vs qini); "
-            "multi-seed learners show all seeds faintly plus the across-seed mean.",
-            "Uplift@k and policy-gain panels use DR/IPW bootstrap point "
-            "estimates with paired Poisson 95% CIs.",
-            "Calibration and decile panels average bin statistics across "
-            "stochastic seeds (seeds 0, 1, 2) per bin_index.",
-            "A/B panel bars are constant-policy IPW values with known "
-            "propensity; annotations use the raw-rate ab_report statistics.",
-        ],
-    }
 
     fig, axes = plt.subplots(
-        2, 3, figsize=(17, 9.5), layout="constrained"
+        2, 4, figsize=(18.2, 7.6), dpi=DPI, layout="constrained"
     )
-    ax_qini, ax_k, ax_cal = axes[0]
-    ax_gain, ax_ab, ax_dec = axes[1]
+    (a1, a2, a3, a4), (a5, a6, a7, _a8) = axes
 
-    # Panel 1: Qini curves with the random line.
+    # (a) Qini curves for every learner plus the random line.
     curves = metrics["curves"]
-    random_line = metrics["random_qini_line"]
+    rql = metrics["random_qini_line"]
     for name in ranking:
+        color, ls, _h = _model_style(name)
         seeds = _seed_entries(curves, name)
-        col = model_color(name)
         all_qini = []
+        fr = None
         for payload in seeds.values():
             fr = np.asarray(payload["fracs"], dtype=float) * 100.0
             qi = np.asarray(payload["qini"], dtype=float)
             all_qini.append(qi)
-            ax_qini.plot(
-                fr,
-                qi,
-                color=col,
-                lw=1.0 if len(seeds) > 1 else 1.7,
-                alpha=0.45 if len(seeds) > 1 else 0.95,
-            )
+            a1.plot(fr, qi, color=color, ls=ls, lw=0.8, alpha=0.30)
         if len(seeds) > 1:
-            ax_qini.plot(
-                fr,
-                np.mean(all_qini, axis=0),
-                color=col,
-                lw=2.0,
-                alpha=0.95,
+            a1.plot(
+                fr, np.mean(all_qini, axis=0),
+                color=color, ls=ls, lw=1.9, alpha=0.95,
             )
-    ax_qini.plot(
-        np.asarray(random_line["fracs"], dtype=float) * 100.0,
-        np.asarray(random_line["qini"], dtype=float),
-        color="#0f172a",
-        lw=1.6,
-        ls="--",
-        label="random line",
-    )
-    ax_qini.set_title("Qini curve, frozen test", fontsize=10.5)
-    ax_qini.set_xlabel("fraction of users targeted (%)", fontsize=8)
-    ax_qini.set_ylabel("Qini", fontsize=8)
-    ax_qini.legend(
-        handles=[
-            Line2D([0], [0], color=model_color(n), lw=2.0, label=_display(n))
-            for n in ranking
-        ]
-        + [
-            Line2D(
-                [0],
-                [0],
-                color="#0f172a",
-                lw=1.6,
-                ls="--",
-                label="random line",
+        elif seeds:
+            a1.plot(
+                fr, all_qini[0], color=color, ls=ls, lw=1.9, alpha=0.95
             )
-        ],
-        fontsize=7,
-        loc="upper left",
-        ncol=2,
-        **LEGEND_KW,
+    a1.plot(
+        np.asarray(rql["fracs"], dtype=float) * 100.0,
+        np.asarray(rql["qini"], dtype=float),
+        color=INK, lw=1.5, ls="--", label="random line",
     )
-    ax_qini.xaxis.set_major_locator(MaxNLocator(6))
+    a1.set_xlim(0, 100)
+    a1.xaxis.set_major_locator(MaxNLocator(6))
+    style(a1, "a", "Qini curves (frozen test)",
+          xlabel="fraction of users targeted (%)", ylabel="Qini")
 
-    # Panel 2: uplift@k with CIs, learners and random only.
+
+    # (b) Cumulative uplift gain for every learner plus the random mean.
+    for name in ranking:
+        color, ls, _h = _model_style(name)
+        seeds = _seed_entries(curves, name)
+        all_gain = []
+        fr = None
+        for payload in seeds.values():
+            if "uplift_gain" not in payload:
+                continue
+            fr = np.asarray(payload["fracs"], dtype=float) * 100.0
+            gn = np.asarray(payload["uplift_gain"], dtype=float)
+            all_gain.append(gn)
+            a2.plot(fr, gn, color=color, ls=ls, lw=0.8, alpha=0.30)
+        if len(all_gain) > 1:
+            a2.plot(
+                fr, np.mean(all_gain, axis=0),
+                color=color, ls=ls, lw=1.9, alpha=0.95,
+            )
+        elif all_gain:
+            a2.plot(fr, all_gain[0], color=color, ls=ls, lw=1.9,
+                    alpha=0.95)
+    a2.set_xlim(0, 100)
+    a2.xaxis.set_major_locator(MaxNLocator(6))
+    style(a2, "b", "Cumulative uplift gain (frozen test)",
+          xlabel="fraction of users targeted (%)", ylabel="uplift gain")
+
+
+    # (c) Uplift@k with CIs for learners and random.
     panel2 = [n for n in ranking if n == "random" or _is_learner(n)]
     xs = np.arange(len(BUDGETS))
     width = 0.8 / max(len(panel2), 1)
     for i, name in enumerate(panel2):
+        color, _ls, hatch = _model_style(name)
         point = boot_models[name]["point"]
         ci = boot_models[name]["ci"]
         vals = np.array([point[k] for k in BUDGETS]) * 100.0
         lo = np.array([ci[k][0] for k in BUDGETS]) * 100.0
         hi = np.array([ci[k][1] for k in BUDGETS]) * 100.0
-        ax_k.bar(
+        a3.bar(
             xs + (i - (len(panel2) - 1) / 2) * width,
-            vals,
-            width,
-            color=model_color(name),
-            alpha=0.9,
+            vals, width,
+            color=color, alpha=0.9, hatch=hatch or None,
+            edgecolor="white", linewidth=0.4,
             yerr=[vals - lo, hi - vals],
-            error_kw={"elinewidth": 0.7, "capsize": 1.5, "ecolor": "#334155"},
+            error_kw={"elinewidth": 0.7, "capsize": 1.5, "ecolor": INK},
         )
-    ax_k.set_xticks(xs)
-    ax_k.set_xticklabels(BUDGET_LABELS, fontsize=8.5)
-    ax_k.set_title("Uplift@k, learners and random", fontsize=10.5)
-    ax_k.set_ylabel("treated minus control rate (pp)", fontsize=8)
-    ax_k.legend(
-        handles=[
-            Patch(facecolor=model_color(n), alpha=0.9, label=_display(n))
-            for n in panel2
-        ],
-        fontsize=7,
-        loc="upper right",
-        ncol=2,
-        **LEGEND_KW,
+    a3.set_xticks(xs)
+    ci_top3 = max(
+        boot_models[n]["ci"][k][1] for n in panel2 for k in BUDGETS
+    ) * 100.0
+    a3.set_ylim(min(0.0, -0.08), ci_top3 * 1.42)
+    style(a3, "c", "Uplift@k, learners and random",
+          ylabel="treated minus control rate (pp)")
+    cat(a3, "x", xs, list(BUDGET_LABELS))
+    a3.axhline(0.0, color=SPINE, lw=0.8)
+    a3.legend(
+        handles=_bar_legend_handles(panel2),
+        fontsize=6.5, loc="upper right", ncol=3,
     )
-    ax_k.axhline(0.0, color="#94a3b8", lw=0.8)
 
-    # Panel 3: calibration for the top-3 learners by AUUC point.
+    # (d) Calibration for the top-3 learners by AUUC.
     cal_bins = metrics["calibration_bins"]
     top3 = learners[:3]
     all_pts: list[float] = []
@@ -340,28 +644,22 @@ def main() -> None:
     hi_d = max(all_pts)
     pad = 0.1 * (hi_d - lo_d) + 1e-9
     x0, x1 = lo_d - pad, hi_d + pad
-    ax_cal.plot([x0, x1], [x0, x1], color="#94a3b8", lw=1.0, ls="--")
+    a4.plot([x0, x1], [x0, x1], color=SPINE, lw=1.0, ls="--")
     for name in top3:
+        color, ls, _h = _model_style(name)
         xs_c, ys_c = cal_series[name]
-        ax_cal.plot(
-            xs_c,
-            ys_c,
-            "o-",
-            color=model_color(name),
-            lw=1.5,
-            markersize=4.5,
-            label=_display(name),
+        a4.plot(
+            xs_c, ys_c, color=color, ls=ls, lw=1.5, marker="o",
+            markersize=4, label=_display(name),
         )
-    ax_cal.set_title("Calibration, top-3 learners", fontsize=10.5)
-    ax_cal.set_xlabel("mean predicted uplift (pp)", fontsize=8)
-    ax_cal.set_ylabel("observed uplift (pp)", fontsize=8)
-    ax_cal.legend(fontsize=7.5, loc="upper left", **LEGEND_KW)
-    ax_cal.set_xlim(x0, x1)
-    ax_cal.set_ylim(x0, x1)
+    a4.set_xlim(x0, x1)
+    a4.set_ylim(x0, x1)
+    style(a4, "d", "Calibration, top-3 learners",
+          xlabel="mean predicted uplift (pp)",
+          ylabel="observed uplift (pp)")
+    a4.legend(fontsize=7, loc="upper left", ncol=1)
 
-    # Panel 4: DR policy gain over the random policy at each budget.
-    # Random is the reference (gain vs itself is identically zero) and is
-    # excluded. All gains are plotted in percentage points.
+    # (e) DR policy gain over the random policy at each budget.
     gains = metrics["bootstrap"]["policy_gains"]
     gain_models = [n for n in ranking if n != "random"]
     xs = np.arange(len(BUDGETS))
@@ -369,9 +667,8 @@ def main() -> None:
     gain_lo = 0.0
     gain_hi = 0.0
     for i, name in enumerate(gain_models):
-        vals = []
-        los = []
-        his = []
+        color, _ls, hatch = _model_style(name)
+        vals, los, his = [], [], []
         for key in GAIN_KEYS_RANDOM:
             g = gains[name][key]
             vals.append(g["mean"] * 100.0)
@@ -381,94 +678,69 @@ def main() -> None:
             his.append(ci_hi - vals[-1])
             gain_lo = min(gain_lo, ci_lo)
             gain_hi = max(gain_hi, ci_hi)
-        ax_gain.bar(
+        a5.bar(
             xs + (i - (len(gain_models) - 1) / 2) * width,
-            vals,
-            width,
-            color=model_color(name),
-            alpha=0.9,
+            vals, width,
+            color=color, alpha=0.9, hatch=hatch or None,
+            edgecolor="white", linewidth=0.4,
             yerr=[los, his],
-            error_kw={"elinewidth": 0.7, "capsize": 1.5, "ecolor": "#334155"},
+            error_kw={"elinewidth": 0.7, "capsize": 1.5, "ecolor": INK},
         )
-    ax_gain.set_xticks(xs)
-    ax_gain.set_xticklabels(BUDGET_LABELS, fontsize=8.5)
-    ax_gain.set_title("DR policy gain vs random", fontsize=10.5)
-    ax_gain.set_ylabel("policy value gain (pp)", fontsize=8)
-    ax_gain.legend(
-        handles=[
-            Patch(facecolor=model_color(n), alpha=0.9, label=_display(n))
-            for n in gain_models
-        ],
-        fontsize=6.5,
-        loc="best",
-        ncol=2,
-        **LEGEND_KW,
+    a5.set_xticks(xs)
+    style(
+        a5, "e",
+        "DR policy gain vs random; every budgeted policy is "
+        "below treat-all",
+        ylabel="policy value gain (pp)",
     )
-    ax_gain.axhline(0.0, color="#94a3b8", lw=0.8)
-    ax_gain.text(
-        0.02,
-        0.02,
-        "every budgeted policy is below treat-all: the average\n"
-        "treatment effect is positive, so treating everyone\n"
-        "maximizes total conversions",
-        transform=ax_gain.transAxes,
-        fontsize=7,
-        va="bottom",
-        color="#334155",
-    )
+    cat(a5, "x", xs, list(BUDGET_LABELS))
+    a5.axhline(0.0, color=SPINE, lw=0.8)
     span = gain_hi - min(gain_lo, 0.0)
-    pad_g = 0.15 * span + 1e-9
-    ax_gain.set_ylim(min(gain_lo, 0.0) - pad_g, gain_hi + pad_g)
-
-    # Panel 5: A/B effect, control vs treated rate with bootstrap CIs.
+    a5.set_ylim(
+        min(gain_lo, 0.0) - 0.12 * span,
+        gain_hi + 0.34 * span,
+    )
+    a5.legend(
+        handles=_bar_legend_handles(gain_models),
+        fontsize=6.5, loc="upper right", ncol=3,
+    )
+    # (f) A/B effect, control vs treated rate with bootstrap CIs.
     pol_none = boot_models["policy_treat_none"]
     pol_all = boot_models["policy_treat_all"]
     bars_x = np.array([0, 1])
     rates = np.array([ab["control_rate"], ab["treated_rate"]]) * 100.0
-    # Bar heights use the raw observed rates; error bars use the bootstrap
-    # CI of the matching constant-policy IPW value (same estimand up to
-    # the IPW weighting, differences are far below the CI width).
     ci_none = pol_none["ci"]["ipw_policy_value_10"]
     ci_all = pol_all["ci"]["ipw_policy_value_10"]
     lows = np.maximum(
         np.array(
             [ab["control_rate"] - ci_none[0], ab["treated_rate"] - ci_all[0]]
-        )
-        * 100.0,
+        ) * 100.0,
         0.0,
     )
     highs = np.maximum(
         np.array(
             [ci_none[1] - ab["control_rate"], ci_all[1] - ab["treated_rate"]]
-        )
-        * 100.0,
+        ) * 100.0,
         0.0,
     )
     tops = rates + highs
-    ax_ab.bar(
-        bars_x,
-        rates,
-        width=0.55,
-        color=["#4169e1", "#e8a13a"],
-        alpha=0.9,
+    a6.bar(
+        bars_x, rates, width=0.55,
+        color=[BLUE, AMBER], alpha=0.9,
         yerr=[lows, highs],
-        error_kw={"elinewidth": 1.6, "capsize": 5, "ecolor": "#0f172a"},
+        error_kw={"elinewidth": 1.2, "capsize": 4, "ecolor": INK},
     )
     for xi, top in zip(bars_x, tops, strict=True):
-        ax_ab.annotate(
-            f"{rates[xi]:.3f}%",
-            (xi, top + 0.008),
-            ha="center",
-            fontsize=8.5,
-            color="#334155",
+        a6.annotate(
+            f"{rates[xi]:.3f}%", (xi, top + 0.008),
+            ha="center", fontsize=8, color=INK,
         )
-    ax_ab.set_xticks(bars_x)
-    ax_ab.set_xticklabels(["control", "treated"], fontsize=9)
-    ax_ab.set_title("A/B effect, full dataset", fontsize=10.5)
-    ax_ab.set_ylabel("conversion rate (%)", fontsize=8)
-    ax_ab.text(
-        0.02,
-        0.97,
+    a6.set_xticks(bars_x)
+    style(a6, "f", "A/B effect, full dataset",
+          ylabel="conversion rate (%)")
+    cat(a6, "x", bars_x, ["control", "treated"])
+    a6.text(
+        0.02, 0.97,
         (
             f"absolute lift {ab['absolute_lift'] * 100:.3f} pp "
             f"[{ab['absolute_lift_ci'][0] * 100:.3f}, "
@@ -477,89 +749,59 @@ def main() -> None:
             f"p = {ab['p_value']:.3f}, "
             f"NNT ~ {ab['number_needed_to_treat']:.0f}"
         ),
-        transform=ax_ab.transAxes,
-        fontsize=7.5,
-        va="top",
-        color="#334155",
+        transform=a6.transAxes, fontsize=7.5, va="top", color=TICK_LABEL,
     )
-    ax_ab.margins(y=0.35)
+    a6.margins(y=0.35)
 
-    # Panel 6: per-decile observed uplift for the best learner.
+    # (g) Per-decile observed uplift for the best learner.
     best = learners[0]
     dec = _mean_bins(
         _seed_entries(metrics["failure_analysis"]["uplift_deciles"], best)
     )
     dec_x = [b["bin_index"] for b in dec]
-    dec_obs = [
-        (b["observed_uplift"] or 0.0) * 100.0 for b in dec
-    ]
-    dec_pred = [
-        (b["mean_predicted_uplift"] or 0.0) * 100.0 for b in dec
-    ]
-    ax_dec.bar(
-        dec_x,
-        dec_obs,
-        color=model_color(best),
-        alpha=0.85,
-        width=0.65,
-    )
-    ax_dec.plot(
-        dec_x,
-        dec_pred,
-        "o-",
-        color="#0f172a",
-        lw=1.4,
-        markersize=4,
+    dec_obs = [(b["observed_uplift"] or 0.0) * 100.0 for b in dec]
+    dec_pred = [(b["mean_predicted_uplift"] or 0.0) * 100.0 for b in dec]
+    bcolor = _model_style(best)[0]
+    a7.bar(dec_x, dec_obs, color=bcolor, alpha=0.85, width=0.65)
+    a7.plot(
+        dec_x, dec_pred, "o-", color=INK, lw=1.3, markersize=4,
         label="mean predicted",
     )
-    ax_dec.axhline(0.0, color="#94a3b8", lw=0.8)
-    ax_dec.set_xticks(dec_x)
-    ax_dec.set_xticklabels([f"d{d}" for d in dec_x], fontsize=8)
-    ax_dec.set_xlabel("predicted-uplift decile (d1 lowest)", fontsize=8)
-    ax_dec.set_title(
-        f"Observed uplift by decile, {_display(best)}", fontsize=10.5
-    )
-    ax_dec.set_ylabel("observed uplift (pp)", fontsize=8)
-    ax_dec.legend(fontsize=7.5, loc="best", **LEGEND_KW)
+    a7.axhline(0.0, color=SPINE, lw=0.8)
+    a7.set_xticks(dec_x)
+    style(a7, "g", f"Observed uplift by decile, {_display(best)}",
+          xlabel="predicted-uplift decile (d1 lowest)",
+          ylabel="observed uplift (pp)")
+    cat(a7, "x", dec_x, [f"d{d}" for d in dec_x])
+    a7.legend(fontsize=7.5, loc="best")
 
-    # Persist the exact plotted values for provenance.
-    figure_data["qini_curves"] = {
-        n: {
-            seed: {
-                "fracs": _seed_entries(curves, n)[seed]["fracs"],
-                "qini": _seed_entries(curves, n)[seed]["qini"],
-            }
-            for seed in _seed_entries(curves, n)
-        }
-        for n in ranking
-        if n in curves
-    }
-    figure_data["random_qini_line"] = random_line
-    figure_data["uplift_at_k"] = {
-        n: {
-            "point": {
-                k: boot_models[n]["point"][k] for k in BUDGETS
-            },
-            "ci": {k: boot_models[n]["ci"][k] for k in BUDGETS},
-        }
-        for n in panel2
-    }
-    figure_data["calibration_top3"] = {
-        n: _mean_bins(_seed_entries(cal_bins, n)) for n in top3
-    }
-    figure_data["deciles_best_learner"] = {"model": best, "bins": dec}
-
-    (ROOT / "scripts" / "figure-data.json").write_text(
-        json.dumps(figure_data, indent=2) + "\n"
+    # Shared legends for the two curve panels live in the empty cell.
+    _a8.set_xticks([])
+    _a8.set_yticks([])
+    for _sp in _a8.spines.values():
+        _sp.set_visible(False)
+    _a8.set_xlim(0, 1)
+    _a8.set_ylim(0, 1)
+    _a8.legend(
+        handles=_line_legend_handles(ranking)
+        + [Line2D([0], [0], color=INK, lw=1.5, ls="--",
+                  label="random line")],
+        fontsize=7, loc="upper center", bbox_to_anchor=(0.5, 1.0),
+        ncol=1,
     )
+    from matplotlib.legend import Legend
 
-    fig.suptitle(
-        f"Criteo uplift benchmark v2, frozen test (n={n_test:,}); "
-        "95% paired Poisson bootstrap CIs",
-        fontsize=11,
+    handles_b = _line_legend_handles(ranking)
+    leg_b = Legend(
+        _a8,
+        handles_b,
+        [_display(n) for n in ranking],
+        fontsize=7, loc="lower center", bbox_to_anchor=(0.5, 0.0),
+        ncol=1,
     )
-    fig.savefig(ROOT / "image.png", dpi=160)
-    print(f"wrote {ROOT / 'image.png'}")
+    _a8.add_artist(leg_b)
+
+    finish(fig, OUT)
 
 
 if __name__ == "__main__":

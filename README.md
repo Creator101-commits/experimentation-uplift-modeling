@@ -169,6 +169,43 @@ tied scores previously inherited source-file order, which let constant
 baselines score as if they ranked the file. Curated artifacts are in
 `results/`; every number below traces to those files.
 
+![Uplift benchmark results: Qini and cumulative gain curves, uplift at
+budget, calibration, policy gains, the A/B effect and decile uplift](image.png)
+
+### What the figure shows
+
+- (a) Qini curves: every learner's curve clears the dashed random
+  line through the mid-range of the targeting axis before the curves
+  converge near 100%; thin lines are the three stochastic seeds and
+  thick lines their mean. The XGBoost S-learner ends highest, test
+  AUUC 0.00105 versus 0.00055 for random.
+- (b) Cumulative uplift gain: targeting the whole frozen test
+  population accumulates about 0.115 percentage points of conversion
+  gain, matching the A/B absolute lift; the random model's curve stays
+  near zero.
+- (c) Uplift at budget: at a 10% targeting budget the XGBoost
+  S-learner shows a treated-minus-control gap of 0.843 pp
+  [0.698, 0.991] versus 0.099 pp for random, and the ordering holds at
+  the 20% and 30% budgets.
+- (d) Calibration: for the top three learners by AUUC, mean predicted
+  uplift tracks observed uplift along the diagonal at the top decile,
+  while the logistic learners underestimate the top bin and the middle
+  bins are noisy, including negative observed uplift.
+- (e) DR policy gain vs random: every budgeted policy beats the random
+  policy by roughly 0.08-0.10 pp at all three budgets, yet all stay at
+  or below treat-all because the average treatment effect is positive.
+- (f) A/B effect on the full dataset: treated conversion is 0.309%
+  versus 0.194% for control, an absolute lift of 0.115 pp
+  [0.108, 0.122], relative lift 59.4%, p = 0.000 and NNT about 868.
+- (g) Observed uplift by predicted decile for the best learner: the
+  top predicted decile shows 0.843 pp observed uplift versus 0.006 pp
+  in the lowest decile, with a noisy middle.
+
+The frozen test shows a small but statistically certain treatment
+effect and learners that isolate a high-uplift top decile, yet no
+learner is significantly better than the simpler references on AUUC
+or Qini.
+
 Data validation (`results/data-manifest.json`): 13,979,592 rows; 16-column
 schema; zero nulls; observed treatment rate 0.8500, conversion rate
 0.00292, visit rate 0.0470, exposure rate 0.0306; 1,259,545 duplicate
@@ -345,7 +382,6 @@ Project link: [https://github.com/Creator101-commits/experimentation-uplift-mode
 
 `image.png` contains only Matplotlib graphs rendered from `results/`.
 Run `uv run --with matplotlib python scripts/render_figure.py` from the
-repository root; the script rewrites `scripts/figure-data.json` with the
-plotted values and saves `image.png`. Matplotlib is intentionally not a
+repository root to regenerate it. Matplotlib is intentionally not a
 project dependency, so it is provided ephemerally. No GPU performance is
 inferred from CPU demonstrations.
