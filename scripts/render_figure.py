@@ -24,6 +24,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import matplotlib.ticker as mticker  # noqa: E402
 import numpy as np  # noqa: E402
+from matplotlib.collections import PathCollection  # noqa: E402
 from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
 from matplotlib.ticker import MaxNLocator  # noqa: E402
@@ -287,6 +288,8 @@ def verify_categories() -> None:
 def _all_texts(fig: plt.Figure) -> list[plt.Text]:
     items = []
     for ax in fig.axes:
+        if not ax.axison:
+            continue
         cand = [ax.title, ax.xaxis.label, ax.yaxis.label]
         cand += list(ax.texts)
         for axis in (ax.xaxis, ax.yaxis):
@@ -488,6 +491,175 @@ def check_legend_pixels(fig: plt.Figure, path: Path) -> list[str]:
     return out
 
 
+
+def check_empty_axes(fig: plt.Figure) -> list[str]:
+    """Every axes must contain at least one plotted artist."""
+    fig.canvas.draw()
+    fig.canvas.draw()
+    out = []
+    for i, ax in enumerate(fig.axes):
+        if not ax.axison:
+            continue
+        artists = (len(ax.lines) + len(ax.collections)
+                   + len(ax.patches) + len(ax.images))
+        if artists == 0:
+            out.append(f"axes {i} has no plotted artists")
+    return out
+
+
+def check_offscale(fig: plt.Figure) -> list[str]:
+    """Every data point must lie inside its axes limits."""
+    fig.canvas.draw()
+    fig.canvas.draw()
+    out = []
+    eps = 1e-9
+    for i, ax in enumerate(fig.axes):
+        x0, x1 = ax.get_xlim()
+        y0, y1 = ax.get_ylim()
+        for coll in ax.collections:
+            if (coll.get_offset_transform() != ax.transData
+                    or not isinstance(coll, PathCollection)):
+                continue
+            offs = coll.get_offsets()
+            if len(offs) == 0 or len(offs) > 20000:
+                continue
+            xs, ys = offs[:, 0], offs[:, 1]
+            bad = int(
+                ((xs < x0 - eps) | (xs > x1 + eps)
+                 | (ys < y0 - eps) | (ys > y1 + eps)).sum()
+            )
+            if bad:
+                out.append(
+                    f"axes {i}: {bad} collection points outside limits"
+                )
+        for line in ax.lines:
+            if line.get_transform() != ax.transData:
+                continue
+            try:
+                pts = line.get_path().vertices
+            except Exception:
+                continue
+            if len(pts) == 0:
+                continue
+            xs, ys = pts[:, 0], pts[:, 1]
+            bad = int(
+                ((xs < x0 - eps) | (xs > x1 + eps)
+                 | (ys < y0 - eps) | (ys > y1 + eps)).sum()
+            )
+            if bad:
+                out.append(
+                    f"axes {i}: {bad} line vertices outside limits"
+                )
+        ren = fig.canvas.get_renderer()
+        bb = ax.get_window_extent(ren)
+        clipped = 0
+        for patch in ax.patches:
+            try:
+                pb = patch.get_window_extent(ren)
+            except Exception:
+                continue
+            if (pb.x0 < bb.x0 - 1 or pb.x1 > bb.x1 + 1
+                    or pb.y0 < bb.y0 - 1 or pb.y1 > bb.y1 + 1):
+                clipped += 1
+        if clipped:
+            out.append(f"axes {i}: {clipped} patches past axes bounds")
+    return out
+
+
+def check_clipped_markers(fig: plt.Figure) -> list[str]:
+    """No marker may extend past the axes bounds."""
+    fig.canvas.draw()
+    fig.canvas.draw()
+    ren = fig.canvas.get_renderer()
+    out = []
+    for i, ax in enumerate(fig.axes):
+        bb = ax.get_window_extent(ren)
+        px_per_pt = fig.dpi / 72.0
+        flagged = False
+        for coll in ax.collections:
+            if (coll.get_offset_transform() != ax.transData or flagged
+                    or not isinstance(coll, PathCollection)):
+                continue
+            offs = coll.get_offsets()
+            if len(offs) == 0:
+                continue
+            try:
+                sizes = np.asarray(coll.get_sizes(), dtype=float)
+            except Exception:
+                sizes = np.array([])
+            if len(sizes) == len(offs) and len(sizes):
+                radii_px = np.sqrt(sizes) / 2.0 * px_per_pt
+            elif len(sizes):
+                radii_px = np.full(
+                    len(offs), np.sqrt(sizes.max()) / 2.0 * px_per_pt
+                )
+            else:
+                radii_px = np.full(len(offs), 3.0 * px_per_pt)
+            pts = ax.transData.transform(offs)
+            hit = (
+                (pts[:, 0] - radii_px < bb.x0)
+                | (pts[:, 0] + radii_px > bb.x1)
+                | (pts[:, 1] - radii_px < bb.y0)
+                | (pts[:, 1] + radii_px > bb.y1)
+            ).any()
+            if hit:
+                out.append(f"axes {i}: marker extends past axes bounds")
+                flagged = True
+        for line in ax.lines:
+            if flagged:
+                break
+            if line.get_transform() != ax.transData:
+                continue
+            marker = line.get_marker()
+            if marker in (None, "", " ", "None", "none", "|", "_"):
+                continue
+            ms = line.get_markersize()
+            radius_px = (ms / 2.0) * px_per_pt
+            pts = ax.transData.transform(line.get_path().vertices)
+            if len(pts) == 0:
+                continue
+            hit = (
+                (pts[:, 0] - radius_px < bb.x0)
+                | (pts[:, 0] + radius_px > bb.x1)
+                | (pts[:, 1] - radius_px < bb.y0)
+                | (pts[:, 1] + radius_px > bb.y1)
+            ).any()
+            if hit:
+                out.append(f"axes {i}: marker extends past axes bounds")
+                flagged = True
+    return out
+
+
+def check_coincident_lines(fig: plt.Figure) -> list[str]:
+    """No two line series may be fully coincident."""
+    fig.canvas.draw()
+    fig.canvas.draw()
+    out = []
+    for i, ax in enumerate(fig.axes):
+        lines = [
+            ln for ln in ax.lines
+            if ln.get_transform() == ax.transData
+        ]
+        seen = False
+        for a in range(len(lines)):
+            if seen:
+                break
+            for b in range(a + 1, len(lines)):
+                pa = lines[a].get_path().vertices
+                pb = lines[b].get_path().vertices
+                if len(pa) != len(pb) or len(pa) == 0:
+                    continue
+                if np.allclose(pa, pb, atol=1e-6, equal_nan=True):
+                    out.append(
+                        f"axes {i}: coincident line series "
+                        f"({lines[a].get_label()!r}, "
+                        f"{lines[b].get_label()!r})"
+                    )
+                    seen = True
+                    break
+    return out
+
+
 def finish(fig: plt.Figure, out: Path) -> None:
     """Verify categorical labels, save, then fail on any check violation."""
     fig.canvas.draw()
@@ -499,6 +671,10 @@ def finish(fig: plt.Figure, out: Path) -> None:
     problems += check_legend_data(fig)
     problems += check_annotation_data(fig)
     problems += check_legend_pixels(fig, out)
+    problems += check_empty_axes(fig)
+    problems += check_offscale(fig)
+    problems += check_clipped_markers(fig)
+    problems += check_coincident_lines(fig)
     plt.close(fig)
     if problems:
         for p in problems[:30]:
@@ -526,7 +702,8 @@ def main() -> None:
     fig, axes = plt.subplots(
         2, 4, figsize=(18.2, 7.6), dpi=DPI, layout="constrained"
     )
-    (a1, a2, a3, a4), (a5, a6, a7, _a8) = axes
+    (a1, a2, a3, a4), (a5, a6, a7, a8) = axes
+    a8.set_axis_off()
 
     # (a) Qini curves for every learner plus the random line.
     curves = metrics["curves"]
@@ -534,21 +711,24 @@ def main() -> None:
     for name in ranking:
         color, ls, _h = _model_style(name)
         seeds = _seed_entries(curves, name)
+        payloads = list(seeds.values())
         all_qini = []
         fr = None
-        for payload in seeds.values():
+        for payload in payloads:
             fr = np.asarray(payload["fracs"], dtype=float) * 100.0
             qi = np.asarray(payload["qini"], dtype=float)
-            all_qini.append(qi)
-            a1.plot(fr, qi, color=color, ls=ls, lw=0.8, alpha=0.30)
-        if len(seeds) > 1:
+            all_qini.append((fr, qi))
+        if len(all_qini) > 1:
+            for fr_p, qi in all_qini:
+                a1.plot(fr_p, qi, color=color, ls=ls, lw=0.8, alpha=0.30)
             a1.plot(
-                fr, np.mean(all_qini, axis=0),
+                fr, np.mean([q for _f, q in all_qini], axis=0),
                 color=color, ls=ls, lw=1.9, alpha=0.95,
             )
-        elif seeds:
+        elif all_qini:
             a1.plot(
-                fr, all_qini[0], color=color, ls=ls, lw=1.9, alpha=0.95
+                all_qini[0][0], all_qini[0][1],
+                color=color, ls=ls, lw=1.9, alpha=0.95,
             )
     a1.plot(
         np.asarray(rql["fracs"], dtype=float) * 100.0,
@@ -559,33 +739,53 @@ def main() -> None:
     a1.xaxis.set_major_locator(MaxNLocator(6))
     style(a1, "a", "Qini curves (frozen test)",
           xlabel="fraction of users targeted (%)", ylabel="Qini")
+    a1.legend(
+        handles=_line_legend_handles(ranking)
+        + [Line2D([0], [0], color=INK, lw=1.5, ls="--",
+                  label="random line")],
+        fontsize=6, loc="lower right", ncol=3,
+    )
 
 
     # (b) Cumulative uplift gain for every learner plus the random mean.
     for name in ranking:
         color, ls, _h = _model_style(name)
         seeds = _seed_entries(curves, name)
+        payloads = [
+            p for p in seeds.values() if "uplift_gain" in p
+        ]
         all_gain = []
-        fr = None
-        for payload in seeds.values():
-            if "uplift_gain" not in payload:
-                continue
-            fr = np.asarray(payload["fracs"], dtype=float) * 100.0
+        for payload in payloads:
+            fr_p = np.asarray(payload["fracs"], dtype=float) * 100.0
             gn = np.asarray(payload["uplift_gain"], dtype=float)
-            all_gain.append(gn)
-            a2.plot(fr, gn, color=color, ls=ls, lw=0.8, alpha=0.30)
+            all_gain.append((fr_p, gn))
         if len(all_gain) > 1:
+            for fr_p, gn in all_gain:
+                a2.plot(fr_p, gn, color=color, ls=ls, lw=0.8, alpha=0.30)
             a2.plot(
-                fr, np.mean(all_gain, axis=0),
+                all_gain[-1][0],
+                np.mean([g for _f, g in all_gain], axis=0),
                 color=color, ls=ls, lw=1.9, alpha=0.95,
             )
         elif all_gain:
-            a2.plot(fr, all_gain[0], color=color, ls=ls, lw=1.9,
-                    alpha=0.95)
+            a2.plot(all_gain[0][0], all_gain[0][1], color=color, ls=ls,
+                    lw=1.9, alpha=0.95)
     a2.set_xlim(0, 100)
     a2.xaxis.set_major_locator(MaxNLocator(6))
     style(a2, "b", "Cumulative uplift gain (frozen test)",
           xlabel="fraction of users targeted (%)", ylabel="uplift gain")
+    b_names = [
+        n for n in ranking
+        if any("uplift_gain" in p for p in _seed_entries(curves, n).values())
+    ]
+    a2.legend(
+        handles=_line_legend_handles(b_names),
+        fontsize=6, loc="lower right", ncol=3,
+    )
+    a2.yaxis.set_major_formatter(
+        mticker.FuncFormatter(lambda x, _pos: f"${x * 1000:.3g}$")
+    )
+    a2.set_ylabel(r"uplift gain ($\times 10^{-3}$)")
 
 
     # (c) Uplift@k with CIs for learners and random.
@@ -689,8 +889,7 @@ def main() -> None:
     a5.set_xticks(xs)
     style(
         a5, "e",
-        "DR policy gain vs random; every budgeted policy is "
-        "below treat-all",
+        "DR policy gain vs random",
         ylabel="policy value gain (pp)",
     )
     cat(a5, "x", xs, list(BUDGET_LABELS))
@@ -774,32 +973,6 @@ def main() -> None:
           ylabel="observed uplift (pp)")
     cat(a7, "x", dec_x, [f"d{d}" for d in dec_x])
     a7.legend(fontsize=7.5, loc="best")
-
-    # Shared legends for the two curve panels live in the empty cell.
-    _a8.set_xticks([])
-    _a8.set_yticks([])
-    for _sp in _a8.spines.values():
-        _sp.set_visible(False)
-    _a8.set_xlim(0, 1)
-    _a8.set_ylim(0, 1)
-    _a8.legend(
-        handles=_line_legend_handles(ranking)
-        + [Line2D([0], [0], color=INK, lw=1.5, ls="--",
-                  label="random line")],
-        fontsize=7, loc="upper center", bbox_to_anchor=(0.5, 1.0),
-        ncol=1,
-    )
-    from matplotlib.legend import Legend
-
-    handles_b = _line_legend_handles(ranking)
-    leg_b = Legend(
-        _a8,
-        handles_b,
-        [_display(n) for n in ranking],
-        fontsize=7, loc="lower center", bbox_to_anchor=(0.5, 0.0),
-        ncol=1,
-    )
-    _a8.add_artist(leg_b)
 
     finish(fig, OUT)
 
