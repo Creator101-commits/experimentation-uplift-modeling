@@ -22,7 +22,6 @@ def generate_synthetic_uplift_data(
     # 12 continuous pre-treatment features
     X = rng.normal(loc=0.0, scale=1.0, size=(n_samples, 12))
 
-    # Randomized treatment assignment
     W = rng.binomial(n=1, p=treatment_propensity, size=n_samples)
 
     # Base propensity of conversion (control group baseline: ~4%)

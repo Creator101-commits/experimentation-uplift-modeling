@@ -95,7 +95,6 @@ class DoublyRobustLearner(BaseUpliftLearner):
             W_tr = W_arr[train_idx]
             y_tr = y_arr[train_idx]
 
-            # Fit outcome models
             m_c = self._new_outcome_model(self.random_state)
             m_t = self._new_outcome_model(self.random_state + 1)
 
@@ -109,7 +108,6 @@ class DoublyRobustLearner(BaseUpliftLearner):
                 m_t = fit_binary_model(m_t, X_tr[t_mask], y_tr[t_mask])
                 mu1_oof[val_idx] = positive_probability(m_t, X_val)
 
-            # Propensity
             if self.known_propensity is not None:
                 e_oof[val_idx] = self.known_propensity
             else:

@@ -11,7 +11,6 @@ from uplift.data.synthetic import generate_synthetic_uplift_data
 
 
 def test_validate_feature_columns_rejects_post_treatment() -> None:
-    # Valid pre-treatment features
     validate_feature_columns(["f0", "f1", "f2"])
 
     # Forbidden post-treatment
@@ -44,7 +43,6 @@ def test_train_val_test_split_uplift() -> None:
     assert len(val) == 100
     assert len(te) == 100
 
-    # Ensure no overlap
     assert len(set(tr.index).intersection(set(te.index))) == 0
 
 

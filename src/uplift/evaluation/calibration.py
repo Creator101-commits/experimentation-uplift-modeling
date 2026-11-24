@@ -37,7 +37,6 @@ def compute_uplift_calibration(
     quantiles = np.linspace(0.0, 1.0, n_bins + 1)
     bin_edges = np.quantile(tau, quantiles)
 
-    # Ensure unique edges
     bin_edges[0] = -np.inf
     bin_edges[-1] = np.inf
 

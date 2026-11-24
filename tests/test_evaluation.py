@@ -19,7 +19,6 @@ from uplift.evaluation.uplift_metrics import (
 
 
 def test_uplift_curves_and_scores() -> None:
-    # Synthetic ground truth
     rng = np.random.default_rng(42)
     n = 500
     W = rng.binomial(1, 0.8, n)

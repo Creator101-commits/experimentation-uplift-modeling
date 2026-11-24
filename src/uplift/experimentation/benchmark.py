@@ -410,7 +410,6 @@ def run_benchmark(
     # DR with the selected xgboost outcome config (best t_xgb config params).
     t_xgb = selected_xgb.get("t_xgb")
     if t_xgb is not None:
-        # Reuse the same hyperparameters for DR nuisance models.
         m = re.search(r"d(\d+)_lr([\d.]+)", t_xgb.name)
         if m:
             params = _xgb_params(int(m.group(1)), float(m.group(2)))

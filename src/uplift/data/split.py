@@ -20,7 +20,6 @@ def train_val_test_split_uplift(
     if total_eval >= 1.0:
         raise ValueError("Sum of val_size and test_size must be strictly less than 1.0.")
 
-    # Create joint strata column
     strata = (df["treatment"].astype(str) + "_" + df["conversion"].astype(str)).values
 
     sss1 = StratifiedShuffleSplit(n_splits=1, test_size=total_eval, random_state=random_state)

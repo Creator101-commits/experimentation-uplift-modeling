@@ -8,7 +8,6 @@ from uplift.experimentation.power import PowerCalculator
 
 
 def test_calculate_sample_size_monotonicity() -> None:
-    # Smaller MDE requires larger sample size
     res_large_mde = PowerCalculator.calculate_sample_size(
         baseline_rate=0.05, mde_absolute=0.01, power=0.80
     )
@@ -21,7 +20,6 @@ def test_calculate_sample_size_monotonicity() -> None:
 
 
 def test_calculate_power() -> None:
-    # Large sample size achieves high power
     power_high = PowerCalculator.calculate_power(
         n_control=10000, n_treated=50000, baseline_rate=0.04, mde_absolute=0.01
     )

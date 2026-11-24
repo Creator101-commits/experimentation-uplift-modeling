@@ -99,7 +99,6 @@ def test_prepare_criteo_writes_parquet_and_manifest(tmp_path: Path) -> None:
 def test_prepare_criteo_detects_duplicates(tmp_path: Path) -> None:
     csv_path = tmp_path / "criteo.csv"
     _write_csv(csv_path, n=200, header=False)
-    # Duplicate the first 10 data rows at the end.
     lines = csv_path.read_text().strip().split("\n")
     dup = lines[:10]
     csv_path.write_text("\n".join(lines + dup) + "\n")
