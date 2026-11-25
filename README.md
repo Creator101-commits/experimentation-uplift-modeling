@@ -1,5 +1,7 @@
 # Experimentation Uplift Modeling
 
+> Who actually responds to a marketing offer? On 14M Criteo users the 59% lift is real, but no uplift model beats the simple baselines.
+
 Does a marketing treatment actually work, and can a model find who
 benefits most? This project benchmarks uplift learners on the full
 Criteo randomized trial: S- and T-learners, gradient-boosted variants
