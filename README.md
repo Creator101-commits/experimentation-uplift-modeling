@@ -1,6 +1,6 @@
 # Experimentation Uplift Modeling
 
-> Who actually responds to a marketing offer? On 14M Criteo users the 59% lift is real, but no uplift model beats the simple baselines.
+> Marketing uplift modeling
 
 Does a marketing treatment actually work, and can a model find who
 benefits most? This project benchmarks uplift learners on the full
@@ -63,7 +63,11 @@ download + sha256 verify -> 60/20/20 split stratified by treatment+conversion
 
 Only pre-treatment features `f0`-`f11` are model inputs; `exposure` and
 `visit` are post-treatment and excluded. Policy value uses the known
-randomized propensity (0.8500001490267658).
+randomized propensity (0.8500001490267658). Predicted uplift is an
+estimated average effect, never an observed individual counterfactual.
+This rerun replaced an earlier publication after a tie-handling defect
+(tied scores had inherited source-file order). Criteo data is
+CC BY-NC-SA, non-commercial.
 
 ## Run it
 
@@ -78,20 +82,3 @@ uv run uplift prepare-data --out data/processed
 uv run uplift benchmark --data data/processed --out artifacts/benchmark
 scripts/kaggle_run.sh   # Kaggle reproduction of the frozen run
 ```
-
-## Notes
-
-- Predicted uplift values are estimates of conditional average effects,
-  not observed individual counterfactuals.
-- Only pre-treatment features `f0`-`f11` are used; `exposure` and
-  `visit` never become model inputs.
-- This rerun replaced an earlier publication after a tie-handling
-  defect (tied scores had inherited source-file order); ranking metrics
-  are now tie-block aware.
-- Data: Criteo uplift v2.1 via the Hugging Face mirror, pinned revision
-  and file sha256, CC BY-NC-SA (non-commercial); raw data are not
-  redistributed. 1,259,545 duplicate rows were counted and retained.
-- Protocol `uplift-benchmark-v1`, seed 42, stochastic seeds {0,1,2},
-  500 bootstrap resamples seed 0. CLI demos still run on seeded
-  synthetic data, not Criteo. Curated output is in `results/` and
-  `image.png` is rendered from it.
